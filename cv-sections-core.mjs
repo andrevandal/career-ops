@@ -48,6 +48,10 @@ const PATTERNS = {
   },
 };
 
+// `earlier_experience` is NOT here (#career-merge): its content now renders
+// inside the shared "CAREER" section alongside `experience`, with no marker
+// of its own to strip — an empty array just renders buildEarlierExperience()
+// as '', which is already a no-op inside the CAREER section body.
 export const OPTIONAL_SECTIONS = ['projects', 'education', 'certifications'];
 
 export function isEmptySection(payload, section) {

@@ -115,12 +115,26 @@ spend_tier: standard
 # (Optional) Visual theming for the generated CV and cover-letter PDFs (#1837).
 # Each token is injected as a CSS custom property that overrides the template
 # default — omit the block (or any key) to keep the built-in look unchanged.
-# Only these four keys are recognized; anything else is ignored.
+# Only these keys are recognized; anything else is ignored.
 # style:
 #   accent_color: "#2563eb"              # section headings / links
 #   font_family:  "Outfit, Inter, sans-serif"
 #   font_size:    "10pt"                 # base body text size
 #   margin:       "0.5in"                # page margin (@page)
+#   heading1_size:            "30px"     # name/header (default 28px)
+#   heading1_weight:          "800"      # (default 700)
+#   heading2_size:            "13px"     # section titles, e.g. WORK EXPERIENCE (default 12px)
+#   heading2_weight:          "700"      # (default 700)
+#   heading2_letter_spacing:  "0.08em"   # (default 0.06em)
+#   heading3_size:            "13px"     # entry titles — job company name (default 12.5px)
+#   heading3_weight:          "600"      # shared by job company + job role + entry titles (default 600)
+#   body_line_height:         "1.5"      # base body text line-height (default 1.5)
+#   body_color:               "#222"     # shared "normal text" color — job bullets, role/entry
+#                                         # titles, education, certifications, skills (default #333)
+#   heading_font_family:      "'Varela Round', sans-serif"  # heading-only font (name + section
+#                                         # titles). Ignored unless the active template declares an
+#                                         # @font-face for it — see templates/cv-template.varela.html
+#                                         # for a working example (self-hosted, SIL OFL licensed).
 
 cv:
   output_format: "html" # "html" (default) or "latex"

@@ -32,25 +32,31 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 10. Rewrite Professional Summary by injecting JD keywords + exit narrative bridge ("Built and sold a business. Now applying systems thinking to [JD domain].")
 11. Select top 3-4 most relevant projects for the job
 12. Reorder experience bullets by JD relevance and by the risk map: strongest matching evidence first
-13. Build competency grid from JD requirements (6-8 keyword phrases), prioritizing `existing` and `supportedByResume` skills from Step 4 — never a `gap` skill
-14. Inject keywords naturally into existing achievements (NEVER invent)
-15. Apply the six-second clarity gate from `modes/heuristics/recruiter-side.md`: top third must make target role, strongest fit, and proof obvious
-16. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`
-17. Build the render payload (see the **JSON Input Schema** below) from the tailored content — emit compact structured JSON, **not** full HTML markup — and write it to `/tmp/cv-{candidate}-{company}.json`
-18. Run `node build-cv-html.mjs /tmp/cv-{candidate}-{company}.json {html-path} {template}`, where `{html-path}` is the active bundle's `cv/tailored/vNNN/cv.html` or `output/cv-{candidate}-{company}.html` for a one-off CV, and `{template}` is the path printed by **Selecting the template** below (omit it to use the base template). The script owns every tag, CSS class, and HTML escaping. Keep the HTML outside temporary storage because the dashboard's `D` hotkey regenerates from it.
-19. Run the fact gate against the generated HTML: `node verify-cv-facts.mjs {html-path}`
+13. **Classify every `cv.md` job entry into a detail tier** (recency + JD relevance, using the Step 9 risk map and the requirement-match evidence already gathered for this JD):
+    - **Full** — the 2-3 most recent/relevant roles → full `experience[]` entry: company, role, dates, 3-5 reordered bullets (Step 12).
+    - **Compressed** — moderately relevant/older roles with some JD-relevant signal → still an `experience[]` entry, but capped at **1 bullet**: the single strongest JD-relevant proof point, not a menu.
+    - **Earlier Career** — everything else (oldest and/or lowest-relevance roles) → an `earlier_experience[]` entry instead: company, role, dates, and **one short description line** (a single sentence, not a bullet list) summarizing the role. The description is a compression of that role's existing `cv.md` bullets/prose — reformulate, never invent new claims.
+    - Never drop a role from `cv.md` entirely; every role appears in one of the two arrays. This tiering only controls how much space a role gets on THIS tailored CV — `cv.md` itself is untouched.
+14. Build competency grid from JD requirements (6-8 keyword phrases), prioritizing `existing` and `supportedByResume` skills from Step 4 — never a `gap` skill
+15. **Build the `skills[]` payload with years-of-experience annotations.** Every technical skill (every category except Languages) carries the `(Ny)` suffix exactly as recorded in `cv.md`'s own Skills section (e.g. `cv.md` says "Node.js (8y)" → the payload item is `"Node.js (8y)"`, not bare `"Node.js"`). Never compute or estimate a year count not already in `cv.md`. The `Languages` category (Portuguese, English, etc.) is the one exception — proficiency, not tenure, so no `(Ny)` suffix there, matching `cv.md`'s own Languages section.
+16. Inject keywords naturally into existing achievements (NEVER invent)
+17. Apply the six-second clarity gate from `modes/heuristics/recruiter-side.md`: top third must make target role, strongest fit, and proof obvious
+18. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`
+19. Build the render payload (see the **JSON Input Schema** below) from the tailored content — emit compact structured JSON, **not** full HTML markup — and write it to `/tmp/cv-{candidate}-{company}.json`. **Always include `candidate.github` and `candidate.portfolio` when `config/profile.yml` has them set** (`candidate.github`, `candidate.portfolio_url`) — they render in the contact row alongside phone/email/LinkedIn and silently dropping them (e.g. by copying an older payload example that predates a field) loses real, already-configured contact info. Omit only the fields genuinely absent from the profile.
+20. Run `node build-cv-html.mjs /tmp/cv-{candidate}-{company}.json {html-path} {template}`, where `{html-path}` is the active bundle's `cv/tailored/vNNN/cv.html` or `output/cv-{candidate}-{company}.html` for a one-off CV, and `{template}` is the path printed by **Selecting the template** below (omit it to use the base template). The script owns every tag, CSS class, and HTML escaping. Keep the HTML outside temporary storage because the dashboard's `D` hotkey regenerates from it.
+21. Run the fact gate against the generated HTML: `node verify-cv-facts.mjs {html-path}`
     - This is a hard gate before PDF rendering.
     - If it fails, stop and fix the generated HTML by removing invented metrics or adding verified evidence to `cv.md`, `article-digest.md`, or `config/cv-facts.json`.
-20. Execute: `node generate-pdf.mjs {html-path} {pdf-path} --format={letter|a4} --report={report number}`, where `{pdf-path}` is the active bundle's `cv/tailored/vNNN/cv.pdf` or `output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf` for a one-off CV. `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the PDF↔report linkage in `data/pdf-index.tsv` so the dashboard can open and regenerate the exact nested or flat HTML/PDF pair. Omit it only for one-off CVs with no tracker entry.
+22. Execute: `node generate-pdf.mjs {html-path} {pdf-path} --format={letter|a4} --report={report number}`, where `{pdf-path}` is the active bundle's `cv/tailored/vNNN/cv.pdf` or `output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf` for a one-off CV. `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the PDF↔report linkage in `data/pdf-index.tsv` so the dashboard can open and regenerate the exact nested or flat HTML/PDF pair. Omit it only for one-off CVs with no tracker entry.
     - The rendered PDF has a two-page warning threshold by default. `--max-pages=N` accepts a positive integer; pass `--max-pages=1` when the user or market prefers a one-page CV.
-    - If the rendered PDF exceeds its threshold, generation warns loudly with the actual and allowed page counts plus trimming guidance, then reports and indexes the unchanged PDF so existing longer-CV flows keep working.
+    - If the rendered PDF exceeds its threshold, generation warns loudly with the actual and allowed page counts plus trimming guidance, then reports and indexes the unchanged PDF so existing longer-CV flows keep working. If it's still over budget after Step 13's tiering, demote another Compressed role to Earlier Career before trimming bullets further — tiering is the primary lever, bullet-by-bullet trimming is the fallback.
     - Pass `--strict-pages` only when the user or market requires a hard limit. Strict overflow leaves the draft available for inspection but does not report or index it as successful; trim lower-priority content and rerun.
-21. Report: PDF path, number of pages, keyword coverage %, and any skill gaps from Step 4 still unaddressed
+23. Report: PDF path, number of pages, keyword coverage %, and any skill gaps from Step 4 still unaddressed
 
 ## ATS Rules (clean parsing)
 
 - Single-column layout (no sidebars, no parallel columns)
-- Standard headers: "Professional Summary", "Work Experience", "Education", "Skills", "Certifications", "Projects"
+- Standard headers: "About Me", "Career", "Education", "Skills", "Certifications", "Projects"
 - No text in images/SVGs
 - No critical info in PDF headers/footers (ATS ignores them)
 - UTF-8, selectable text (not rasterized)
@@ -67,24 +73,26 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 
 ## PDF Design
 
-- **Fonts**: Space Grotesk (headings, 600-700) + DM Sans (body, 400-500)
-- **Fonts self-hosted**: `fonts/`
-- **Header**: name in Space Grotesk 24px bold + gradient line `linear-gradient(to right, hsl(187,74%,32%), hsl(270,70%,45%))` 2px + contact row
-- **Section headers**: Space Grotesk 13px, uppercase, letter-spacing 0.05em, color cyan primary
-- **Body**: DM Sans 11px, line-height 1.5
-- **Company names**: accent purple color `hsl(270,70%,45%)`
-- **Margins**: 0.6in
+- **Fonts**: system-safe stack by default (`Liberation Sans`/Helvetica Neue/Arial/DejaVu Sans) — clean ATS text extraction. The opt-in `varela` template pack self-hosts Varela Round for the name + section titles only (see `templates/cv-template.varela.html`); job titles/bullets/all ATS-keyword-bearing text always stay on the system stack regardless of template.
+- **Header**: name at `--heading1-size` (default 28px) bold + gradient line `linear-gradient(to right, hsl(187,74%,32%), hsl(270,70%,45%))` 2px + contact row (phone, email, LinkedIn, GitHub, portfolio/website, location — each optional, dropped cleanly when absent)
+- **Section headers**: `--heading2-size` (default 12px), uppercase, `--heading2-letter-spacing` (default 0.06em), color `--accent-color`. No border/separator line under the heading (removed by user request — a plain heading + margin only).
+- **Body**: `--font-size` (default 11px), line-height `--body-line-height` (default 1.5)
+- **Entry titles** (CAREER company name, Earlier Career company name): `--body-color` (default `#333`) — plain, not a distinct accent color. Company/org accent purple (`hsl(270,70%,45%)`) is still used for Education/Certifications institutions and Projects, just not for employer names.
+- **Margins**: `--page-margin` (default 0.6in)
 - **Background**: pure white
+- All of the above are theme tokens (`config/profile.yml` → `style:`) — see `theme-style.mjs` for the full list.
 
 ## Section order (optimized "6-second recruiter scan")
 
-1. Header (large name, gradient, contact, portfolio link)
-2. Professional Summary (3-4 lines, keyword-dense)
+1. Header (large name, gradient, contact row: phone/email/LinkedIn/GitHub/portfolio/location)
+2. About Me (3-4 lines, keyword-dense — default title "About Me", was "Professional Summary")
 3. Core Competencies (6-8 keyword phrases in flex-grid)
-4. Work Experience (reverse chronological)
+4. Career (merged Work Experience + Earlier Experience, one heading — default title "Career", was two separate sections) — reverse chronological:
+   - Full/Compressed tiers: dates on their own line, then `Company — Role`, then bullets (or 1 bullet for Compressed)
+   - Earlier Career tier: dates, then `Company — Role`, then one short description sentence — same list, no sub-heading of its own
 5. Projects (top 3-4 most relevant)
-6. Education & Certifications
-7. Skills (languages + technical)
+6. Education (single column — degree/org stacked above year, not side-by-side) & Certifications
+7. Skills (technical categories carry `(Ny)` years-of-experience per skill; Languages category does not)
 
 ## Keyword injection strategy (ethical, truth-based)
 
@@ -134,10 +142,9 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
     "photo_style": "rounded"
   },
   "sections": {
-    "summary": "Professional Summary",
+    "summary": "About Me",
     "competencies": "Core Competencies",
-    "experience": "Work Experience",
-    "projects": "Projects",
+    "experience": "Career",
     "education": "Education",
     "certifications": "Certifications",
     "skills": "Skills"
@@ -148,9 +155,16 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
     {
       "company": "Company Name",
       "role": "Job Title",
-      "location": "Remote",
       "dates": "June 2022 - Present",
       "bullets": ["Achievement bullet with JD keywords injected", "Another quantified-impact bullet"]
+    }
+  ],
+  "earlier_experience": [
+    {
+      "company": "Earlier Co",
+      "role": "Junior/Mid Title",
+      "dates": "2016 - 2019",
+      "description": "One-sentence compression of that role's existing cv.md bullets/prose — reformulated, never invented."
     }
   ],
   "projects": [
@@ -163,8 +177,8 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
     { "title": "Certified Kubernetes Administrator", "org": "CNCF", "year": "2024" }
   ],
   "skills": [
-    { "category": "Languages", "items": "Python, JavaScript, C++" },
-    { "category": "Frameworks", "items": ["FastAPI", "React", "PyTorch"] }
+    { "category": "Languages", "items": "Portuguese (Native), English (C1)" },
+    { "category": "Frameworks", "items": ["FastAPI (5y)", "React (4y)", "PyTorch (2y)"] }
   ]
 }
 ```
@@ -184,10 +198,11 @@ Write a JSON file with this structure, then run `node build-cv-html.mjs <input.j
 | `candidate.location` | string | From `profile.yml`. |
 | `candidate.photo` | string | Opt-in profile photo (#264): a local path or `data:` URL. Empty/absent emits **no `<img>`**, rendering pixel-for-pixel identical to the photoless layout (US/UK/many-market ATS penalize photos; opt in for DACH/European markets). |
 | `candidate.photo_style` | string | Optional photo framing: `rounded` (default), `circle`, or `square`. Read it from `candidate.photo_style` in `config/profile.yml`; invalid values fail before HTML is written. |
-| `sections` | object | Optional localized section titles; any omitted key falls back to the English default shown above. |
-| `summary` | string | Personalized summary with keywords. |
+| `sections` | object | Optional localized section titles; any omitted key falls back to the English default shown above. `sections.experience` titles the merged "Career" section (Full/Compressed tiers AND `earlier_experience` render under it — #career-merge); there is no separate `earlier_experience` title anymore. |
+| `summary` | string | Personalized "About Me" text with keywords. |
 | `competencies` | string[] | 6-8 keyword phrases → competency tags. |
-| `experience[]` | object | `company`, `role`, `location` (optional), `dates`, `bullets` (reordered, keyword-injected). |
+| `experience[]` | object | `company`, `role`, `location` (optional, **omit by default** — remote/country status is not shown in the CAREER section per user preference; only set it if the user explicitly asks for a specific role), `dates`, `bullets` (reordered, keyword-injected). Full/Compressed tiers (Step 13) both live here — Compressed just caps `bullets` at 1. Renders under the shared "Career" heading. |
+| `earlier_experience[]` | object | `company`, `role`, `dates`, `description` (single sentence, no bullets). Earlier Career tier (Step 13) — renders under the SAME "Career" heading as `experience[]`, immediately after it; omit the field entirely (or pass `[]`) when every role qualifies for Full/Compressed — no bare heading risk since `experience[]` already justifies the section. |
 | `projects[]` | object | `name`, `badge` (optional), `tech` (optional), `description` (a `bullets` array is also accepted and joined into the description line). |
 | `education[]` | object | `title` (degree), `org` (institution), `year`, `description` (optional). |
 | `certifications[]` | object | `title`, `org`, `year`. |

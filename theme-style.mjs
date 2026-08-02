@@ -9,6 +9,25 @@
  *     font_family:  "Outfit, Inter, sans-serif"
  *     font_size:    "10pt"
  *     margin:       "0.5in"
+ *     heading1_size:            "30px"     # name/header
+ *     heading1_weight:          "800"
+ *     heading2_size:            "13px"     # section titles (WORK EXPERIENCE, ...)
+ *     heading2_weight:          "700"
+ *     heading2_letter_spacing:  "0.08em"
+ *     heading3_size:            "13px"     # entry titles (job company name)
+ *     heading3_weight:          "600"      # shared by job company + job role
+ *     body_line_height:         "1.5"      # base body text (#tiered-detail follow-up)
+ *     body_color:               "#222"     # shared "normal text" color (job bullets,
+ *                                           # role/title text, education, certifications, skills)
+ *     heading_font_family:      "'Varela Round', sans-serif"  # heading-only font (name +
+ *                                           # section titles) — opt-in template only, see
+ *                                           # templates/cv-template.varela.html
+ *     ink_color:                "#040B0E"  # name (h1) + base body text color — the
+ *                                           # "brand ink" tier, distinct from body_color
+ *     accent_tint_bg:           "#CCECE5"  # competency-tag / project-badge pill background
+ *     accent_tint_border:       "#99D9CC"  # competency-tag pill border
+ *     muted_color:              "#747673"  # secondary/de-emphasized text — dates, periods,
+ *                                           # locations, tech tags, contact row
  *
  * These are injected as CSS custom properties into the rendered HTML before it
  * hits the PDF pipeline. The templates read them via `var(--x, <default>)`, so a
@@ -27,6 +46,36 @@ export const STYLE_VAR_MAP = {
   font_family:  '--font-family',
   font_size:    '--font-size',
   margin:       '--page-margin',
+  // Heading levels (#tiered-detail follow-up): name/h1, section titles/h2, and
+  // entry titles/h3 (job company name — job role shares heading3_weight but
+  // keeps reading font_size for its own text size, since it IS body-size text).
+  heading1_size:           '--heading1-size',
+  heading1_weight:         '--heading1-weight',
+  heading2_size:           '--heading2-size',
+  heading2_weight:         '--heading2-weight',
+  heading2_letter_spacing: '--heading2-letter-spacing',
+  heading3_size:           '--heading3-size',
+  heading3_weight:         '--heading3-weight',
+  // Normal/body text: the shared color across job bullets, role/entry titles,
+  // education, certifications, and skills (they all rendered the same literal
+  // #333 before this token existed — this just gives that shared value a name).
+  body_line_height:        '--body-line-height',
+  body_color:              '--body-color',
+  // Heading-only font override (opt-in, requires a template that declares an
+  // @font-face for it and reads var(--heading-font-family) — see
+  // templates/cv-template.varela.html). Ignored by the base cv-template.html,
+  // which has no --heading-font-family consumer and stays byte-identical.
+  heading_font_family:     '--heading-font-family',
+  // Design-token color layer (#personalization, 2026-07-31): a small palette
+  // beyond the single accent/body pair above, for users bringing their own
+  // brand tokens (e.g. a named green/dark-blue/gray scale). Color choice never
+  // affects ATS text extraction (that's font/structure, not color) — the only
+  // requirement enforced here is via the existing WCAG-safe defaults; pick
+  // your own values with enough contrast against white to stay legible.
+  ink_color:               '--ink-color',
+  accent_tint_bg:          '--accent-tint-bg',
+  accent_tint_border:      '--accent-tint-border',
+  muted_color:             '--muted-color',
 };
 
 /**

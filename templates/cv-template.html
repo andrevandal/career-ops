@@ -16,6 +16,29 @@
        comes from the later @page rule injectPrintPageCss appends (which reads
        this same variable), so this default must match it exactly. */
     --page-margin: 0.6in;
+    /* Heading levels + normal-text tokens (#tiered-detail follow-up, style
+       brainstorm). Defaults below reproduce today's hardcoded values exactly —
+       a profile without a `style:` block renders byte-identical output. */
+    --heading1-size: 28px;
+    --heading1-weight: 700;
+    --heading2-size: 12px;
+    --heading2-weight: 700;
+    --heading2-letter-spacing: 0.06em;
+    --heading3-size: 12.5px;
+    --heading3-weight: 600;
+    --body-line-height: 1.5;
+    --body-color: #333;
+    /* Design-token color layer (#personalization). ink-color and the two
+       accent-tint vars have ONE canonical default each (matching what every
+       current consumer already renders), so they're safe to declare here like
+       the tokens above. --muted-color has NO canonical default — its several
+       consumers currently render genuinely different grays (#777/#888/#666/
+       #555), so each one keeps its own literal as a per-occurrence var()
+       fallback below instead of forcing one shared value by default; only an
+       explicit style.muted_color override makes them converge. */
+    --ink-color: #1a1a2e;
+    --accent-tint-bg: hsl(187, 40%, 95%);
+    --accent-tint-border: hsl(187, 40%, 88%);
   }
   @page { margin: var(--page-margin); }
 
@@ -51,8 +74,8 @@
   body {
     font-family: var(--font-family);
     font-size: var(--font-size);
-    line-height: 1.5;
-    color: #1a1a2e;
+    line-height: var(--body-line-height);
+    color: var(--ink-color);
     background: #ffffff;
     padding: 0;
     margin: 0;
@@ -75,9 +98,9 @@
 
   .header h1 {
     font-family: var(--font-family);
-    font-size: 28px;
-    font-weight: 700;
-    color: #1a1a2e;
+    font-size: var(--heading1-size);
+    font-weight: var(--heading1-weight);
+    color: var(--ink-color);
     letter-spacing: -0.02em;
     margin-bottom: 6px;
     line-height: 1.1;
@@ -85,7 +108,7 @@
 
   .header-gradient {
     height: 2px;
-    background: linear-gradient(to right, var(--accent-color), hsl(270, 70%, 45%));
+    background: var(--accent-color);
     border-radius: 1px;
     margin-bottom: 10px;
   }
@@ -97,11 +120,11 @@
     font-family: var(--font-family);
     font-size: 10.5px;
     line-height: 1.4;
-    color: #555;
+    color: var(--muted-color, #555);
   }
 
   .contact-row a {
-    color: #555;
+    color: var(--muted-color, #555);
     text-decoration: none;
   }
 
@@ -136,13 +159,11 @@
 
   .section-title {
     font-family: var(--font-family);
-    font-size: 12px;
-    font-weight: 700;
+    font-size: var(--heading2-size);
+    font-weight: var(--heading2-weight);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
+    letter-spacing: var(--heading2-letter-spacing);
     color: var(--accent-color);
-    border-bottom: 1.5px solid #e2e2e2;
-    padding-bottom: 4px;
     margin-bottom: 10px;
     line-height: 1.2;
   }
@@ -175,49 +196,54 @@
     font-family: var(--font-family);
     font-size: 10px;
     font-weight: 500;
-    color: hsl(187, 74%, 28%);
-    background: hsl(187, 40%, 95%);
+    /* Reads var(--accent-color) directly (#personalization) — previously a
+       separate near-identical hardcoded teal (hsl(187,74%,28%) vs the accent
+       token's 32%), an accidental second accent shade rather than a deliberate
+       one. Unifying it is a ~4pp lightness shift by default (imperceptible)
+       and makes every accent-colored element track ONE token going forward. */
+    color: var(--accent-color);
+    background: transparent;
     padding: 4px 10px;
     border-radius: 3px;
-    border: 1px solid hsl(187, 40%, 88%);
+    /* Outlined chip (#personalization) — no fill, border matches the text
+       color for a crisp outline instead of the previous tinted-background
+       pill (accent-tint-bg/border are still available for other elements). */
+    border: 1px solid var(--accent-color);
   }
 
-  /* === WORK EXPERIENCE === */
+  /* === CAREER (full tier) === */
   .job {
     margin-bottom: 14px;
   }
 
-  .job-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
+  .job-period {
+    font-size: 10.5px;
+    color: var(--muted-color, #777);
+    white-space: nowrap;
+    margin-top: 2px;
     margin-bottom: 4px;
   }
 
-  .job-company {
+  .job-title-line {
     font-family: var(--font-family);
-    font-size: 12.5px;
-    font-weight: 600;
-    color: hsl(270, 70%, 45%);
+    margin-bottom: 0;
   }
 
-  .job-period {
-    font-size: 10.5px;
-    color: #777;
-    white-space: nowrap;
+  .job-company {
+    font-size: var(--heading3-size);
+    font-weight: var(--heading3-weight);
+    color: var(--body-color);
   }
 
   .job-role {
     font-size: var(--font-size);
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 6px;
+    font-weight: 400;
+    color: var(--body-color);
   }
 
   .job-location {
     font-size: 10px;
-    color: #888;
+    color: var(--muted-color, #888);
   }
 
   .job ul {
@@ -228,12 +254,57 @@
   .job li {
     font-size: 10.5px;
     line-height: 1.6;
-    color: #333;
+    color: var(--body-color);
     margin-bottom: 4px;
   }
 
   .job li strong {
     font-weight: 600;
+  }
+
+  /* === CAREER (earlier/compact tier, #tiered-detail) ===
+     Compact block for low-relevance/older roles: dates, then company — role on
+     one line (bold company + regular role), then a single short description
+     sentence — no bullets. Shares the "CAREER" heading with the full tier
+     above (#career-merge): one continuous reverse-chronological list, not a
+     separate section. */
+  .earlier-career {
+    margin-top: 2px;
+  }
+
+  .earlier-item {
+    margin-bottom: 8px;
+  }
+
+  .earlier-item-period {
+    font-size: 10.5px;
+    color: var(--muted-color, #777);
+    white-space: nowrap;
+    margin-top: 2px;
+    margin-bottom: 2px;
+  }
+
+  .earlier-item-title-line {
+    margin-bottom: 0;
+  }
+
+  .earlier-item-company {
+    font-size: var(--font-size);
+    font-weight: var(--heading3-weight);
+    color: var(--body-color);
+  }
+
+  .earlier-item-role {
+    font-size: var(--font-size);
+    font-weight: 400;
+    color: var(--body-color);
+  }
+
+  .earlier-item-desc {
+    font-size: 10px;
+    color: var(--muted-color, #666);
+    margin-top: 2px;
+    line-height: 1.5;
   }
 
   /* === PROJECTS === */
@@ -244,18 +315,12 @@
   .project-title {
     font-family: var(--font-family);
     font-size: 11.5px;
-    font-weight: 600;
-    color: hsl(270, 70%, 45%);
+    font-weight: 400;
+    color: var(--body-color);
   }
 
-  .project-badge {
-    font-size: 9px;
-    font-weight: 500;
-    color: var(--accent-color);
-    background: hsl(187, 40%, 95%);
-    padding: 1px 6px;
-    border-radius: 2px;
-    margin-left: 6px;
+  .project-title strong {
+    font-weight: var(--heading3-weight);
   }
 
   .project-desc {
@@ -267,37 +332,35 @@
 
   .project-tech {
     font-size: 9.5px;
-    color: #888;
+    color: var(--muted-color, #888);
     margin-top: 3px;
   }
 
-  /* === EDUCATION === */
+  /* === EDUCATION (single column, #style-brainstorm) === */
   .edu-item {
     margin-bottom: 8px;
   }
 
-  .edu-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
+  .edu-title {
+    font-weight: 400;
+    font-size: var(--font-size);
+    color: var(--body-color);
   }
 
-  .edu-title {
-    font-weight: 600;
-    font-size: var(--font-size);
-    color: #333;
+  .edu-title strong {
+    font-weight: var(--heading3-weight);
   }
 
   .edu-org {
-    color: hsl(270, 70%, 45%);
-    font-weight: 500;
+    display: inline;
+    color: var(--body-color);
+    font-weight: 400;
   }
 
   .edu-year {
     font-size: 10px;
-    color: #777;
-    white-space: nowrap;
+    color: var(--muted-color, #777);
+    margin-top: 1px;
   }
 
   .edu-desc {
@@ -326,17 +389,17 @@
   .cert-title {
     font-size: 10.5px;
     font-weight: 500;
-    color: #333;
+    color: var(--body-color);
   }
 
   .cert-org {
-    color: hsl(270, 70%, 45%);
+    color: var(--body-color);
     white-space: nowrap;
   }
 
   .cert-year {
     font-size: 10px;
-    color: #777;
+    color: var(--muted-color, #777);
     white-space: nowrap;
     text-align: right;
     width: 44px;
@@ -356,7 +419,7 @@
 
   .skill-category {
     font-weight: 600;
-    color: #333;
+    color: var(--body-color);
     font-size: 10.5px;
   }
 
@@ -367,13 +430,12 @@
       print-color-adjust: exact;
     }
 
-    /* Keep a small right gutter for the print box. Right-aligned content
-       (job periods, education years) right-aligns to the content-box edge,
-       and the rightmost glyph's side bearing can spill ~1px past it and get
-       clipped by Chromium's print clip. A plain `.page` padding is reset to 0
-       here for print, which is why padding set outside @media print has no
-       effect; restoring a right gutter inside the print rule fixes it without
-       re-centering the page or hard-coding a per-format max-width. See #1341. */
+    /* Keep a small right gutter for the print box: a `.page` padding is reset
+       to 0 for print (outside @media print padding has no effect here), and
+       without it right-edge text can have its rightmost glyph side-bearing
+       spill ~1px past the content box and get clipped by Chromium's print
+       clip. Kept as general safety margin even with the single-column layout
+       (#style-brainstorm) — cheap insurance, not layout-dependent. See #1341. */
     .page {
       padding: 0 0.18in 0 0;
     }
@@ -396,9 +458,10 @@
   /* Keep a heading attached to the content that follows it, so headings are not
      orphaned at the bottom of a page. */
   .section-title,
-  .job-company,
-  .job-role,
-  .job-location,
+  .job-period,
+  .job-title-line,
+  .earlier-item-period,
+  .earlier-item-title-line,
   .project-title {
     break-after: avoid;
     page-break-after: avoid;
@@ -420,18 +483,9 @@
     font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
   }
 
-  html[lang="ar"] .header-gradient {
-    background: linear-gradient(to left, var(--accent-color), hsl(270, 70%, 45%));
-  }
-
   html[lang="ar"] .job ul {
     padding-right: 18px;
     padding-left: 0;
-  }
-
-  html[lang="ar"] .project-badge {
-    margin-right: 6px;
-    margin-left: 0;
   }
 
   html[lang="ar"] .cert-year {
@@ -553,10 +607,13 @@
     </div>
   </div>
 
-  <!-- WORK EXPERIENCE -->
+  <!-- CAREER -->
   <div class="section">
     <div class="section-title">{{SECTION_EXPERIENCE}}</div>
     {{EXPERIENCE}}
+    <div class="earlier-career">
+      {{EARLIER_EXPERIENCE}}
+    </div>
   </div>
 
   <!-- PROJECTS -->

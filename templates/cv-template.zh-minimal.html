@@ -174,11 +174,14 @@ version: 1.0.0
     margin-bottom: 14px;
   }
 
-  .job-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
+  .job-period {
+    font-size: 10.5px;
+    color: #777;
+    white-space: nowrap;
+    margin-bottom: 2px;
+  }
+
+  .job-title-line {
     margin-bottom: 4px;
   }
 
@@ -189,17 +192,10 @@ version: 1.0.0
     color: hsl(270, 70%, 45%);
   }
 
-  .job-period {
-    font-size: 10.5px;
-    color: #777;
-    white-space: nowrap;
-  }
-
   .job-role {
     font-size: 11px;
     font-weight: 600;
     color: #333;
-    margin-bottom: 6px;
   }
 
   .job-location {
@@ -263,13 +259,6 @@ version: 1.0.0
     margin-bottom: 8px;
   }
 
-  .edu-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-  }
-
   .edu-title {
     font-weight: 600;
     font-size: 11px;
@@ -284,7 +273,7 @@ version: 1.0.0
   .edu-year {
     font-size: 10px;
     color: #777;
-    white-space: nowrap;
+    margin-top: 1px;
   }
 
   .edu-desc {
@@ -383,6 +372,8 @@ version: 1.0.0
   /* Keep a heading attached to the content that follows it, so headings are not
      orphaned at the bottom of a page. */
   .section-title,
+  .job-period,
+  .job-title-line,
   .job-company,
   .job-role,
   .job-location,
@@ -551,8 +542,8 @@ version: 1.0.0
     margin-bottom: 15px;
   }
 
-  .job-header {
-    margin-bottom: 3px;
+  .job-title-line {
+    margin-bottom: 5px;
   }
 
   .job-company {
@@ -570,7 +561,6 @@ version: 1.0.0
   .job-role {
     color: var(--zhm-accent);
     font-weight: 600;
-    margin-bottom: 5px;
   }
 
   .job li {

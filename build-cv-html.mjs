@@ -49,9 +49,9 @@ const PHOTO_STYLES = new Set(['rounded', 'circle', 'square']);
 const IMAGE_DATA_URL_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
 
 const DEFAULT_SECTION_TITLES = {
-  summary: 'Professional Summary',
+  summary: 'About Me',
   competencies: 'Core Competencies',
-  experience: 'Work Experience',
+  experience: 'Career',
   projects: 'Projects',
   education: 'Education',
   certifications: 'Certifications',
@@ -322,11 +322,10 @@ function buildExperience(entries, partial) {
         ? `\n    <div class="job-location">${escapeHtml(e.location)}</div>`
         : '';
       return `<div class="job">
-    <div class="job-header">
-      <span class="job-company">${escapeHtml(e.company)}</span>
-      <span class="job-period">${escapeHtml(e.dates || e.period || '')}</span>
+    <div class="job-title-line">
+      <span class="job-company">${escapeHtml(e.company)}</span> — <span class="job-role">${escapeHtml(e.role)}</span>
     </div>
-    <div class="job-role">${escapeHtml(e.role)}</div>${location}
+    <div class="job-period">${escapeHtml(e.dates || e.period || '')}</div>${location}
     <ul>
 ${bullets}
     </ul>
@@ -352,12 +351,45 @@ ${bullets}
   }).join('\n  ');
 }
 
+function buildEarlierExperience(entries, partial) {
+  if (!Array.isArray(entries) || entries.length === 0) return '';
+  if (!partial) {
+    return entries.filter(Boolean).map(e => {
+      const desc = e.description
+        ? `\n    <div class="earlier-item-desc">${escapeHtml(e.description)}</div>`
+        : '';
+      return `<div class="earlier-item">
+    <div class="earlier-item-title-line">
+      <span class="earlier-item-company">${escapeHtml(e.company)}</span> — <span class="earlier-item-role">${escapeHtml(e.role)}</span>
+    </div>
+    <div class="earlier-item-period">${escapeHtml(e.dates || e.period || '')}</div>${desc}
+  </div>`;
+    }).join('\n  ');
+  }
+
+  const { entryTemplate, blocks } = partial;
+  return entries.filter(Boolean).map(e => {
+    const blockValues = new Map([
+      ['DESC_BLOCK', { value: escapeHtml(e.description || ''), present: Boolean(e.description) }],
+    ]);
+    return fillEntry(entryTemplate, blocks, {
+      COMPANY: escapeHtml(e.company || ''),
+      ROLE: escapeHtml(e.role || ''),
+      PERIOD: escapeHtml(e.dates || e.period || ''),
+      DESC: escapeHtml(e.description || ''),
+    }, blockValues);
+  }).join('\n  ');
+}
+
 function buildProjects(entries, partial) {
   if (!Array.isArray(entries) || entries.length === 0) return '';
   if (!partial) {
     return entries.filter(Boolean).map(e => {
+      const org = e.org
+        ? ` — <span class="project-org">${escapeHtml(e.org)}</span>`
+        : '';
       const badge = e.badge
-        ? `<span class="project-badge">${escapeHtml(e.badge)}</span>`
+        ? ` — ${escapeHtml(e.badge)}`
         : '';
       // Prefer a single description; fall back to joining bullets into one line so
       // a bullets-shaped payload still renders inside the .project-desc block.
@@ -370,7 +402,7 @@ function buildProjects(entries, partial) {
         ? `\n    <div class="project-tech">${escapeHtml(e.tech)}</div>`
         : '';
       return `<div class="project">
-    <div class="project-title">${escapeHtml(e.name)}${badge}</div>${desc}${tech}
+    <div class="project-title"><span class="project-name">${escapeHtml(e.name)}</span>${org}${badge}</div>${desc}${tech}
   </div>`;
     }).join('\n  ');
   }
@@ -380,12 +412,14 @@ function buildProjects(entries, partial) {
     const descText = e.description
       || (Array.isArray(e.bullets) ? e.bullets.filter(Boolean).join(' ') : '');
     const blockValues = new Map([
+      ['ORG_BLOCK', { value: escapeHtml(e.org || ''), present: Boolean(e.org) }],
       ['BADGE_BLOCK', { value: escapeHtml(e.badge || ''), present: Boolean(e.badge) }],
       ['DESC_BLOCK',  { value: escapeHtml(descText),      present: Boolean(descText) }],
       ['TECH_BLOCK',  { value: escapeHtml(e.tech || ''),  present: Boolean(e.tech) }],
     ]);
     return fillEntry(entryTemplate, blocks, {
       NAME:  escapeHtml(e.name || ''),
+      ORG:   escapeHtml(e.org || ''),
       BADGE: escapeHtml(e.badge || ''),
       DESC:  escapeHtml(descText),
       TECH:  escapeHtml(e.tech || ''),
@@ -398,16 +432,14 @@ function buildEducation(entries, partial) {
   if (!partial) {
     return entries.filter(Boolean).map(e => {
       const org = e.org
-        ? ` <span class="edu-org">${escapeHtml(e.org)}</span>`
+        ? ` — <span class="edu-org">${escapeHtml(e.org)}</span>`
         : '';
       const desc = e.description
         ? `\n    <div class="edu-desc">${escapeHtml(e.description)}</div>`
         : '';
       return `<div class="edu-item">
-    <div class="edu-header">
-      <div class="edu-title">${escapeHtml(e.title)}${org}</div>
-      <div class="edu-year">${escapeHtml(e.year || '')}</div>
-    </div>${desc}
+    <div class="edu-title"><strong>${escapeHtml(e.title)}</strong>${org}</div>
+    <div class="edu-year">${escapeHtml(e.year || '')}</div>${desc}
   </div>`;
     }).join('\n  ');
   }
@@ -491,12 +523,22 @@ function buildSkills(categories, partial) {
 function buildContactRow(candidate) {
   const c = candidate || {};
   const items = [];
+  if (c.portfolio && c.portfolio.url) {
+    items.push(`<a href="${sanitizeUrl(c.portfolio.url)}">${escapeHtml(c.portfolio.display || c.portfolio.url)}</a>`);
+  }
   if (c.phone) {
-    const tel = sanitizeUrl('tel:' + String(c.phone).replace(/\s+/g, ''));
-    items.push(`<a href="${tel}">${escapeHtml(c.phone)}</a>`);
+    // wa.me deep-link instead of tel: (#personalization) — opens a WhatsApp
+    // chat instead of dialing. wa.me requires digits only (no +, spaces,
+    // dashes, parens); the DISPLAYED text stays the original formatted number.
+    const digits = String(c.phone).replace(/[^\d]/g, '');
+    const wa = digits ? sanitizeUrl(`https://wa.me/${digits}`) : '';
+    if (wa) items.push(`<a href="${wa}">${escapeHtml(c.phone)}</a>`);
   }
   if (c.email) {
     items.push(`<a href="${sanitizeUrl('mailto:' + c.email)}">${escapeHtml(c.email)}</a>`);
+  }
+  if (c.location) {
+    items.push(`<span>${escapeHtml(c.location)}</span>`);
   }
   if (c.linkedin && c.linkedin.url) {
     items.push(`<a href="${sanitizeUrl(c.linkedin.url)}">${escapeHtml(c.linkedin.display || c.linkedin.url)}</a>`);
@@ -506,12 +548,6 @@ function buildContactRow(candidate) {
     if (githubHref) {
       items.push(`<a href="${githubHref}">${escapeHtml(c.github.display || c.github.url)}</a>`);
     }
-  }
-  if (c.portfolio && c.portfolio.url) {
-    items.push(`<a href="${sanitizeUrl(c.portfolio.url)}">${escapeHtml(c.portfolio.display || c.portfolio.url)}</a>`);
-  }
-  if (c.location) {
-    items.push(`<span>${escapeHtml(c.location)}</span>`);
   }
   const sep = '\n      <span class="separator">|</span>\n      ';
   return `<div class="contact-row">\n      ${items.join(sep)}\n    </div>`;
@@ -539,6 +575,7 @@ function renderReport(payload, partials) {
     COMPETENCIES: buildCompetencies(payload.competencies, partials.get('competencies')),
     SECTION_EXPERIENCE: escapeHtml(sectionTitles.experience),
     EXPERIENCE: buildExperience(payload.experience, partials.get('experience')),
+    EARLIER_EXPERIENCE: buildEarlierExperience(payload.earlier_experience, partials.get('earlier_experience')),
     SECTION_PROJECTS: escapeHtml(sectionTitles.projects),
     PROJECTS: buildProjects(payload.projects, partials.get('projects')),
     SECTION_EDUCATION: escapeHtml(sectionTitles.education),
@@ -601,6 +638,7 @@ async function writeAndReport(html, absOutput, payload, extra = {}) {
     counts: {
       competencies: (payload.competencies || []).length,
       experienceEntries: (payload.experience || []).length,
+      earlierExperienceEntries: (payload.earlier_experience || []).length,
       projectEntries: (payload.projects || []).length,
       educationEntries: (payload.education || []).length,
       certificationEntries: (payload.certifications || []).length,
@@ -708,8 +746,15 @@ async function runSelfTest() {
         'Reduced regression test time by 60% through parallel execution',
       ],
     }],
+    earlier_experience: [{
+      company: 'Old Corp',
+      role: 'Junior Engineer',
+      dates: '2018 - 2020',
+      description: 'Built internal tooling and maintained legacy PHP services.',
+    }],
     projects: [{
       name: 'Test Project',
+      org: 'Test Organisation',
       badge: 'Open Source',
       tech: 'Python, FastAPI, Docker',
       description: 'Built a REST API with automated test coverage exceeding 90%.',
@@ -753,6 +798,18 @@ async function runSelfTest() {
     process.exit(1);
   }
 
+  // Guard the wa.me phone link (#personalization): the href must be a digits-only
+  // WhatsApp deep link (no +, spaces, dashes), while the DISPLAYED text stays the
+  // original formatted phone number from the sample ('+1 234 567 8900').
+  if (!html.includes('href="https://wa.me/12345678900"') || !html.includes('>+1 234 567 8900<')) {
+    console.error('Self-test failed: phone did not render as a digits-only wa.me link with the original display text');
+    process.exit(1);
+  }
+  if (html.includes('href="tel:')) {
+    console.error('Self-test failed: phone still rendered a tel: link instead of wa.me');
+    process.exit(1);
+  }
+
   // Guard the github contact-row case added for #2170: the link must render
   // with the sanitized href from the sample.
   if (!html.includes('href="https://github.com/test"')) {
@@ -790,6 +847,21 @@ async function runSelfTest() {
     process.exit(1);
   }
 
+  // Contact order is part of the Varela recruiter-scan layout: website, phone,
+  // email, location, LinkedIn, then GitHub.
+  const contactOrder = [
+    'test.example.com',
+    '+1 234 567 8900',
+    'test@example.com',
+    'City, State',
+    'linkedin.com/in/test',
+    'github.com/test',
+  ].map(item => html.indexOf(item));
+  if (contactOrder.some((position, index) => position === -1 || (index > 0 && position <= contactOrder[index - 1]))) {
+    console.error('Self-test failed: contact row must render website, phone, email, location, LinkedIn, then GitHub');
+    process.exit(1);
+  }
+
   // Guard that section partial rendering produces expected class names (so a
   // broken partial file doesn't silently remove structural markup).
   if (!html.includes('class="job"')) {
@@ -808,8 +880,52 @@ async function runSelfTest() {
     console.error('Self-test failed: education section is missing .edu-item class');
     process.exit(1);
   }
+  if (!html.includes('class="earlier-item"')) {
+    console.error('Self-test failed: earlier-experience section is missing .earlier-item class');
+    process.exit(1);
+  }
+  if (!html.includes('Old Corp') || !html.includes('Junior Engineer')) {
+    console.error('Self-test failed: earlier-experience entry fields not found in output');
+    process.exit(1);
+  }
   if (!html.includes('class="cert-item"')) {
     console.error('Self-test failed: certifications section is missing .cert-item class');
+    process.exit(1);
+  }
+
+  // Guard the CAREER merge (#career-merge): one shared "Career" heading covers
+  // both tiers, the old two-column .job-header/.edu-header flex wrappers are
+  // gone, and dates render in their own .job-period/.earlier-item-period line
+  // ahead of the company/role title line.
+  if (!html.includes('>Career<')) {
+    console.error('Self-test failed: default "Career" section title not found');
+    process.exit(1);
+  }
+  if (!html.includes('>About Me<')) {
+    console.error('Self-test failed: default "About Me" section title not found');
+    process.exit(1);
+  }
+  if (html.includes('class="job-header"') || html.includes('class="edu-header"') || html.includes('class="earlier-item-header"')) {
+    console.error('Self-test failed: an old two-column header wrapper class leaked back into the output');
+    process.exit(1);
+  }
+  if (!html.includes('class="job-period"') || !html.includes('class="job-title-line"')) {
+    console.error('Self-test failed: job-period/job-title-line (title-above-date layout) missing');
+    process.exit(1);
+  }
+  if (html.indexOf('class="job-title-line"') > html.indexOf('class="job-period"')) {
+    console.error('Self-test failed: job-title-line must render BEFORE job-period (title above date)');
+    process.exit(1);
+  }
+
+  // Project and education title pairs must preserve the same emphasis hierarchy
+  // as Career: primary label at heading weight, organisation regular, date below.
+  if (!html.includes('<span class="project-name">Test Project</span> — <span class="project-org">Test Organisation</span>')) {
+    console.error('Self-test failed: project title must render project name and organisation with Career-style hierarchy');
+    process.exit(1);
+  }
+  if (!html.includes('<strong>Bachelor of Science in Computer Science</strong> — <span class="edu-org">Test University</span>')) {
+    console.error('Self-test failed: education title must render degree and institution with Career-style hierarchy');
     process.exit(1);
   }
 
@@ -841,6 +957,22 @@ async function runSelfTest() {
   }
   if (noLocHtml.includes('class="job-location"')) {
     console.error('Self-test failed: job-location block rendered when location is absent');
+    process.exit(1);
+  }
+
+  // Guard: no earlier_experience entries must not render any .earlier-item
+  // markup — its content lives inside the shared "CAREER" section
+  // (#career-merge), which stays justified by `experience` alone.
+  const noEarlierSample = { ...sample, earlier_experience: [] };
+  let noEarlierHtml;
+  try {
+    noEarlierHtml = renderHtml(template, noEarlierSample, TEMPLATE_PATH);
+  } catch (err) {
+    console.error(`Self-test failed (no-earlier-experience variant): ${err.message}`);
+    process.exit(1);
+  }
+  if (noEarlierHtml.includes('class="earlier-item"')) {
+    console.error('Self-test failed: empty earlier_experience still rendered .earlier-item markup');
     process.exit(1);
   }
 
