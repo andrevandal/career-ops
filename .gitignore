@@ -20,6 +20,10 @@ reports/*.md
 !reports/.gitkeep
 output/*
 !output/.gitkeep
+batch/pipeline-results/*
+!batch/pipeline-results/.gitkeep
+batch/application-prep/*
+!batch/application-prep/.gitkeep
 batch/logs/*
 !batch/logs/.gitkeep
 batch/batch-state.tsv
@@ -105,14 +109,6 @@ opencode.json
 career-dashboard
 career-dashboard.exe
 package-lock.json
-!web/package-lock.json
-
-# Playwright MCP server run artifacts (ephemeral, machine-local)
-.playwright-mcp/
-
-# Planning (local scratchpad)
-plan/
-
 # Web — runtime cache/history the dashboard writes locally; nothing here is tracked.
 .career-ops-web/
 
@@ -120,3 +116,6 @@ plan/
 # (see DATA_CONTRACT.md). Re-include them past the unanchored user-layer
 # patterns above (cv.md, portals.yml).
 !test-fixtures/**
+
+# Agent tool scratch (brainstorming skill sessions — ephemeral, machine-local)
+.superpowers/
