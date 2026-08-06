@@ -280,51 +280,6 @@ name: Varela Round Headings
     font-weight: 600;
   }
 
-  /* === CAREER (earlier/compact tier, #tiered-detail) ===
-     Compact block for low-relevance/older roles: dates, then company — role on
-     one line (bold company + regular role), then a single short description
-     sentence — no bullets. Shares the "CAREER" heading with the full tier
-     above (#career-merge): one continuous reverse-chronological list, not a
-     separate section. */
-  .earlier-career {
-    margin-top: 2px;
-  }
-
-  .earlier-item {
-    margin-bottom: 8px;
-  }
-
-  .earlier-item-period {
-    font-size: 10.5px;
-    color: var(--muted-color, #777);
-    white-space: nowrap;
-    margin-top: 2px;
-    margin-bottom: 2px;
-  }
-
-  .earlier-item-title-line {
-    margin-bottom: 0;
-  }
-
-  .earlier-item-company {
-    font-size: var(--font-size);
-    font-weight: var(--heading3-weight);
-    color: var(--body-color);
-  }
-
-  .earlier-item-role {
-    font-size: var(--font-size);
-    font-weight: 400;
-    color: var(--body-color);
-  }
-
-  .earlier-item-desc {
-    font-size: 10px;
-    color: var(--muted-color, #666);
-    margin-top: 2px;
-    line-height: 1.5;
-  }
-
   /* === PROJECTS === */
   .project {
     margin-bottom: 12px;
@@ -486,8 +441,6 @@ name: Varela Round Headings
   .section-title,
   .job-period,
   .job-title-line,
-  .earlier-item-period,
-  .earlier-item-title-line,
   .project-title {
     break-after: avoid;
     page-break-after: avoid;
@@ -637,9 +590,6 @@ name: Varela Round Headings
   <div class="section">
     <div class="section-title">{{SECTION_EXPERIENCE}}</div>
     {{EXPERIENCE}}
-    <div class="earlier-career">
-      {{EARLIER_EXPERIENCE}}
-    </div>
   </div>
 
   <!-- PROJECTS -->
