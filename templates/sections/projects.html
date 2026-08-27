@@ -3,8 +3,7 @@
 
   Field placeholders filled per entry:
     NAME         — project name
-    ORG_BLOCK    — conditional: project organisation in regular weight; omitted when absent
-    BADGE_BLOCK  — conditional: badge text; omitted when absent
+    BADGE_BLOCK  — conditional: badge span when badge is present; omitted otherwise
     DESC_BLOCK   — conditional: description div when description is present; omitted otherwise
     TECH_BLOCK   — conditional: tech div when tech is present; omitted otherwise
 
@@ -12,12 +11,11 @@
 -->
 <!--ENTRY-->
 <div class="project">
-  <div class="project-title"><span class="project-name">{{NAME}}</span>{{ORG_BLOCK}}{{BADGE_BLOCK}}</div>
+  <div class="project-title">{{NAME}}{{BADGE_BLOCK}}</div>
   {{DESC_BLOCK}}
   {{TECH_BLOCK}}
 </div>
-<!--BADGE_BLOCK--> — {{BADGE}}<!--/BADGE_BLOCK-->
-<!--ORG_BLOCK--> — <span class="project-org">{{ORG}}</span><!--/ORG_BLOCK-->
+<!--BADGE_BLOCK--><span class="project-badge">{{BADGE}}</span><!--/BADGE_BLOCK-->
 <!--DESC_BLOCK--><div class="project-desc">{{DESC}}</div><!--/DESC_BLOCK-->
 <!--TECH_BLOCK--><div class="project-tech">{{TECH}}</div><!--/TECH_BLOCK-->
 <!--/ENTRY-->

@@ -174,14 +174,11 @@ version: 1.0.0
     margin-bottom: 14px;
   }
 
-  .job-period {
-    font-size: 10.5px;
-    color: #777;
-    white-space: nowrap;
-    margin-bottom: 2px;
-  }
-
-  .job-title-line {
+  .job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
     margin-bottom: 4px;
   }
 
@@ -192,10 +189,17 @@ version: 1.0.0
     color: hsl(270, 70%, 45%);
   }
 
+  .job-period {
+    font-size: 10.5px;
+    color: #777;
+    white-space: nowrap;
+  }
+
   .job-role {
     font-size: 11px;
     font-weight: 600;
     color: #333;
+    margin-bottom: 6px;
   }
 
   .job-location {
@@ -259,6 +263,13 @@ version: 1.0.0
     margin-bottom: 8px;
   }
 
+  .edu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+  }
+
   .edu-title {
     font-weight: 600;
     font-size: 11px;
@@ -273,7 +284,7 @@ version: 1.0.0
   .edu-year {
     font-size: 10px;
     color: #777;
-    margin-top: 1px;
+    white-space: nowrap;
   }
 
   .edu-desc {
@@ -311,6 +322,41 @@ version: 1.0.0
   }
 
   .cert-year {
+    font-size: 10px;
+    color: #777;
+    white-space: nowrap;
+    text-align: right;
+    width: 44px;
+  }
+
+  /* === AWARDS === */
+  .award-table {
+    display: table;
+    width: 100%;
+  }
+
+  .award-item {
+    display: table-row;
+  }
+
+  .award-item > * {
+    display: table-cell;
+    vertical-align: baseline;
+    padding-bottom: 6px;
+  }
+
+  .award-title {
+    font-size: 10.5px;
+    font-weight: 500;
+    color: #333;
+  }
+
+  .award-org {
+    color: hsl(270, 70%, 45%);
+    white-space: nowrap;
+  }
+
+  .award-year {
     font-size: 10px;
     color: #777;
     white-space: nowrap;
@@ -372,14 +418,21 @@ version: 1.0.0
   /* Keep a heading attached to the content that follows it, so headings are not
      orphaned at the bottom of a page. */
   .section-title,
-  .job-period,
-  .job-title-line,
   .job-company,
   .job-role,
   .job-location,
   .project-title {
     break-after: avoid;
     page-break-after: avoid;
+  }
+
+  /* Keep a project's tech line attached to the description above it.  A project
+     may still split across pages, but not at the one opportunity that strands a
+     bare "Python | github.com/..." line at the top of the next page with no
+     title or description to identify it. */
+  .project-tech {
+    break-before: avoid;
+    page-break-before: avoid;
   }
 
   /* === RTL (Arabic) Support === */
@@ -472,6 +525,18 @@ version: 1.0.0
     overflow-wrap: break-word;
   }
 
+  /* Traditional Chinese. `html[lang="zh"]` does not match `zh-TW`, and this
+     template's default stack is Simplified — which substitutes the wrong glyph
+     forms for TC text — so zh-TW needs TC faces explicitly. modes/zh-TW/ ships
+     as a supported locale. (No `ko` rule here on purpose: this is the Chinese
+     minimal template, not a general one.) */
+  html[lang="zh-TW"] body,
+  html[lang="zh-TW"] .contact-row {
+    font-family: 'Liberation Sans', 'Helvetica Neue', Arial, 'PingFang TC',
+      'Microsoft JhengHei', 'Noto Sans CJK TC',
+      'Noto Sans TC', 'Source Han Sans TC', sans-serif;
+  }
+
   .header {
     margin-bottom: 18px;
   }
@@ -542,8 +607,8 @@ version: 1.0.0
     margin-bottom: 15px;
   }
 
-  .job-title-line {
-    margin-bottom: 5px;
+  .job-header {
+    margin-bottom: 3px;
   }
 
   .job-company {
@@ -561,6 +626,7 @@ version: 1.0.0
   .job-role {
     color: var(--zhm-accent);
     font-weight: 600;
+    margin-bottom: 5px;
   }
 
   .job li {
@@ -675,11 +741,19 @@ version: 1.0.0
     <div class="cert-table">{{CERTIFICATIONS}}</div>
   </div>
 
+  <!-- AWARDS -->
+  <div class="section">
+    <div class="section-title">{{SECTION_AWARDS}}</div>
+    <div class="award-table">{{AWARDS}}</div>
+  </div>
+
   <!-- SKILLS -->
   <div class="section">
     <div class="section-title">{{SECTION_SKILLS}}</div>
     {{SKILLS}}
   </div>
+
+  <!-- END -->
 
 </div>
 </body>

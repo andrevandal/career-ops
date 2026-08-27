@@ -4,7 +4,7 @@
 import { pass, fail, ROOT } from './helpers.mjs';
 import { join } from 'path';
 import { pathToFileURL } from 'url';
-import { readFileSync, writeFileSync, mkdtempSync, rmSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 
 console.log('\ntheme-style.mjs (dynamic PDF theming, #1837)');
@@ -27,28 +27,6 @@ try {
   } else {
     fail('styleTokensFrom should return {} for null/non-object/array');
   }
-
-  // styleTokensFrom: the new heading-level + normal-text keys map correctly too
-  const t2 = styleTokensFrom({
-    heading1_size: '30px', heading1_weight: '800',
-    heading2_size: '13px', heading2_weight: '700', heading2_letter_spacing: '0.08em',
-    heading3_size: '13px', heading3_weight: '600',
-    body_line_height: '1.6', body_color: '#222',
-    heading_font_family: "'Varela Round', sans-serif",
-    ink_color: '#040B0E', accent_tint_bg: '#CCECE5', accent_tint_border: '#99D9CC', muted_color: '#747673',
-  });
-  const expectedHeadingVars = {
-    '--heading1-size': '30px', '--heading1-weight': '800',
-    '--heading2-size': '13px', '--heading2-weight': '700', '--heading2-letter-spacing': '0.08em',
-    '--heading3-size': '13px', '--heading3-weight': '600',
-    '--body-line-height': '1.6', '--body-color': '#222',
-    '--heading-font-family': "'Varela Round', sans-serif",
-    '--ink-color': '#040B0E', '--accent-tint-bg': '#CCECE5', '--accent-tint-border': '#99D9CC', '--muted-color': '#747673',
-  };
-  const headingVarsMatch = Object.entries(expectedHeadingVars).every(([k, v]) => t2[k] === v)
-    && Object.keys(t2).length === Object.keys(expectedHeadingVars).length;
-  if (headingVarsMatch) pass('styleTokensFrom maps the 14 heading-level/normal-text/heading-font/design-token keys');
-  else fail(`styleTokensFrom heading vars => ${JSON.stringify(t2)}`);
 
   // readStyleTokens: from a profile file; missing file → {}
   const dir = mkdtempSync(join(tmpdir(), 'career-ops-theme-'));
@@ -108,86 +86,39 @@ try {
     if (hasRoot && usesVars && !circular) pass(`${tpl} declares :root theme defaults and reads them via var() (no circular refs)`);
     else fail(`${tpl}: hasRoot=${hasRoot} usesVars=${usesVars} circular=${circular}`);
   }
-
-  // Template guard: cv-template.html's new heading-level/normal-text tokens (the
-  // style brainstorm follow-up) also declare :root defaults and are read via
-  // var(), with no circular refs — same contract as the original 4 tokens above,
-  // scoped to cv-template.html only (cover-letter-template.html doesn't carry
-  // resume-specific heading levels).
+  // Regression: localized CJK body font stacks must honor the profile
+  // --font-family override while keeping their curated fallback stacks.
   {
-    const src = readFileSync(join(ROOT, 'templates/cv-template.html'), 'utf-8');
-    const headingVars = ['heading1-size', 'heading1-weight', 'heading2-size', 'heading2-weight',
-      'heading2-letter-spacing', 'heading3-size', 'heading3-weight', 'body-line-height', 'body-color'];
-    const hasRoot = headingVars.every((v) => new RegExp(`--${v}:`).test(src));
-    const usesVars = headingVars.every((v) => src.includes(`var(--${v})`));
-    const circular = headingVars.some((v) => new RegExp(`--${v}:\\s*var\\(`).test(src));
-    if (hasRoot && usesVars && !circular) {
-      pass('cv-template.html declares :root defaults for the heading/body tokens and reads them via var() (no circular refs)');
+    const tplSrc = readFileSync(join(ROOT, 'templates/cv-template.html'), 'utf-8');
+
+    const jaBody = /html\[lang="ja"\]\s+body\s*\{[^}]*font-family:\s*var\(--font-family,\s*'Liberation Sans'/s.test(tplSrc);
+    const zhBody = /html\[lang="zh-CN"\]\s+body,\s*html\[lang="zh"\]\s+body\s*\{[^}]*font-family:\s*var\(--font-family,\s*'Liberation Sans'/s.test(tplSrc);
+
+    const jaBodyCount = (tplSrc.match(/html\[lang="ja"\]\s+body\s*\{/g) || []).length;
+    const zhCnBodyCount = (tplSrc.match(/html\[lang="zh-CN"\]\s+body/g) || []).length;
+    const zhBodyCount = (tplSrc.match(/html\[lang="zh"\]\s+body/g) || []).length;
+
+    if (jaBody && zhBody && jaBodyCount === 1 && zhCnBodyCount === 1 && zhBodyCount === 1) {
+      pass('CJK body font stacks honor --font-family overrides without duplicate body selectors');
     } else {
-      fail(`cv-template.html heading vars: hasRoot=${hasRoot} usesVars=${usesVars} circular=${circular}`);
+      fail(`CJK body font regression: ja=${jaBody} zh=${zhBody} jaCount=${jaBodyCount} zhCNCount=${zhCnBodyCount} zhCount=${zhBodyCount}`);
     }
   }
 
-  // Template guard: the design-token color layer (#personalization) — ink-color
-  // and the two accent-tint vars have canonical :root defaults (byte-identical
-  // by default); muted-color has NO canonical default, only per-occurrence
-  // var(--muted-color, <original literal>) fallbacks, so a profile without
-  // style.muted_color renders every consumer's original distinct gray exactly
-  // as before. Applies to cv-template.html only (cover-letter-template.html
-  // doesn't carry these resume-specific consumers).
+  // Regression: the Korean locale must honor profile.style.font_family on the
+  // body and the prominent heading/contact surfaces. A duplicate selector or a
+  // fixed-only stack silently defeats the dynamic theme block.
   {
-    const src = readFileSync(join(ROOT, 'templates/cv-template.html'), 'utf-8');
-    const hasCanonicalRoot = /--ink-color:\s*#1a1a2e;/.test(src)
-      && /--accent-tint-bg:\s*hsl\(187, 40%, 95%\);/.test(src)
-      && /--accent-tint-border:\s*hsl\(187, 40%, 88%\);/.test(src);
-    const inkUsedByHeader = /\.header h1\s*\{[^}]*color:\s*var\(--ink-color\)/s.test(src);
-    const inkUsedByBody = /\bbody\s*\{[^}]*color:\s*var\(--ink-color\)/s.test(src);
-    const outlinedTag = /\.competency-tag\s*\{[^}]*color:\s*var\(--accent-color\);\s*background:\s*transparent;[^}]*border:\s*1px solid var\(--accent-color\);/s.test(src);
-    const noProjectBadgeClass = !/\.project-badge\s*\{/.test(src);
-    const mutedFallbacksPresent = [
-      "var(--muted-color, #555)", "var(--muted-color, #777)", "var(--muted-color, #888)", "var(--muted-color, #666)",
-    ].every((needle) => src.includes(needle));
-    const noMutedCanonicalDefault = !/--muted-color:\s*#/.test(src);
-    if (hasCanonicalRoot && inkUsedByHeader && inkUsedByBody && outlinedTag && noProjectBadgeClass && mutedFallbacksPresent && noMutedCanonicalDefault) {
-      pass('cv-template.html wires the ink/muted design-token color layer, outlined competency tags, and no leftover project-badge pill');
+    const koSrc = readFileSync(join(ROOT, 'templates/cv-template.html'), 'utf-8');
+    const koBody = koSrc.match(/html\[lang="ko"\]\s+body\s*\{[^}]*\}/s)?.[0] || '';
+    const koHeadings = koSrc.match(/html\[lang="ko"\]\s+\.header h1,[\s\S]*?\{[^}]*\}/)?.[0] || '';
+    const hasProfileFontFallback = (src) => /font-family:\s*var\(--font-family,/.test(src);
+    const hasDuplicateBodySelector = /html\[lang="ko"\]\s+body\s*,\s*html\[lang="ko"\]\s+body\s*\{/.test(koSrc);
+    if (hasProfileFontFallback(koBody) && hasProfileFontFallback(koHeadings) && !hasDuplicateBodySelector) {
+      pass('Korean body/headings honor --font-family theme override without duplicate selector');
     } else {
-      fail(`cv-template.html design tokens: hasCanonicalRoot=${hasCanonicalRoot} inkUsedByHeader=${inkUsedByHeader} inkUsedByBody=${inkUsedByBody} outlinedTag=${outlinedTag} noProjectBadgeClass=${noProjectBadgeClass} mutedFallbacksPresent=${mutedFallbacksPresent} noMutedCanonicalDefault=${noMutedCanonicalDefault}`);
+      fail(`Korean theme contract: body=${hasProfileFontFallback(koBody)} headings=${hasProfileFontFallback(koHeadings)} duplicate=${hasDuplicateBodySelector}`);
     }
-  }
-
-  // Template guard: the opt-in cv-template.varela.html declares the self-hosted
-  // Varela Round @font-face, a --heading-font-family default that falls back to
-  // --font-family (byte-identical unless a profile overrides it), applies it
-  // ONLY to the name (h1) and section titles (not job titles/bullets, which stay
-  // on the ATS-safe system stack), and references the real font file on disk.
-  {
-    const src = readFileSync(join(ROOT, 'templates/cv-template.varela.html'), 'utf-8');
-    const hasFontFace = /@font-face\s*\{[^}]*font-family:\s*'Varela Round';[^}]*src:\s*url\('\.\/fonts\/varela-round\.woff2'\)\s*format\('woff2'\)/s.test(src);
-    const hasDefault = /--heading-font-family:\s*var\(--font-family\);/.test(src);
-    const headerUsesIt = /\.header h1\s*\{[^}]*font-family:\s*var\(--heading-font-family\)/s.test(src);
-    const sectionUsesIt = /\.section-title\s*\{[^}]*font-family:\s*var\(--heading-font-family\)/s.test(src);
-    // Job titles/bullets/company names must NOT read --heading-font-family — they
-    // stay on --font-family so ATS-keyword-bearing text is unaffected.
-    const jobUntouched = !/\.job-role\s*\{[^}]*var\(--heading-font-family\)/s.test(src)
-      && !/\.job li\s*\{[^}]*var\(--heading-font-family\)/s.test(src)
-      && !/\.job-company\s*\{[^}]*var\(--heading-font-family\)/s.test(src);
-    const fontFileExists = existsSync(join(ROOT, 'fonts/varela-round.woff2'));
-    if (hasFontFace && hasDefault && headerUsesIt && sectionUsesIt && jobUntouched && fontFileExists) {
-      pass('cv-template.varela.html wires Varela Round to name/section-titles only, with a byte-identical default and the real font file present');
-    } else {
-      fail(`cv-template.varela.html: hasFontFace=${hasFontFace} hasDefault=${hasDefault} headerUsesIt=${headerUsesIt} sectionUsesIt=${sectionUsesIt} jobUntouched=${jobUntouched} fontFileExists=${fontFileExists}`);
-    }
-  }
-
-  // Regression guard: the BASE cv-template.html (used by every profile that
-  // doesn't opt into a named template) must NOT reference --heading-font-family
-  // or the Varela Round font file — otherwise generate-pdf.mjs's inlineLocalFonts
-  // would base64-embed an unused ~44KB font into every default CV.
-  {
-    const baseSrc = readFileSync(join(ROOT, 'templates/cv-template.html'), 'utf-8');
-    const isClean = !baseSrc.includes('--heading-font-family') && !baseSrc.includes('varela-round.woff2');
-    if (isClean) pass('cv-template.html (base) stays free of the opt-in Varela Round wiring — no bloat for other profiles');
-    else fail('cv-template.html (base) leaked heading-font-family/varela-round references');
   }
 
   // Regression (post-review, #1837): injectPrintPageCss's @page rule used to

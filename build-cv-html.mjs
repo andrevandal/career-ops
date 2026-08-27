@@ -49,12 +49,14 @@ const PHOTO_STYLES = new Set(['rounded', 'circle', 'square']);
 const IMAGE_DATA_URL_RE = /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\s]+$/i;
 
 const DEFAULT_SECTION_TITLES = {
-  summary: 'About Me',
+  summary: 'Professional Summary',
   competencies: 'Core Competencies',
-  experience: 'Career',
+  experience: 'Work Experience',
   projects: 'Projects',
   education: 'Education',
   certifications: 'Certifications',
+  awards: 'Awards & Honors',
+  interests: 'Interests',
   skills: 'Skills',
 };
 
@@ -63,8 +65,12 @@ const DEFAULT_SECTION_TITLES = {
 // (e.g. "R&D", "scaled 10x < budget", 'the "north star" metric') render as
 // literal text instead of breaking the document or injecting tags.
 function escapeHtml(text) {
-  if (typeof text !== 'string') return '';
-  return text
+  // Blank out only truly absent/structural values. A number or boolean scalar
+  // (e.g. a payload with `year: 2024` instead of `"2024"`) must render its value,
+  // not vanish: the old `typeof text !== 'string' → ''` guard silently dropped
+  // numeric years/dates from the CV while `present` stayed true.
+  if (text === null || text === undefined || typeof text === 'object') return '';
+  return String(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -199,7 +205,10 @@ function joinItems(items) {
 function parsePartial(source) {
   // Step 1: locate the ENTRY zone.
   const entryZoneMatch = /<!--ENTRY-->([\s\S]*?)<!--\/ENTRY-->/.exec(source);
-  const entryZone = entryZoneMatch ? entryZoneMatch[1] : source;
+  if (!entryZoneMatch) {
+    throw new Error('Malformed partial: missing <!--ENTRY-->...<!--/ENTRY--> tags');
+  }
+  const entryZone = entryZoneMatch[1];
 
   // Step 2: extract named conditional-block definitions from the entry zone.
   const blockRe = /<!--([A-Z][A-Z0-9_]+)-->([\s\S]*?)<!--\/\1-->/g;
@@ -208,21 +217,35 @@ function parsePartial(source) {
   // can remove them verbatim from the entry zone in step 3, without needing any
   // broad HTML-comment regex (which would trigger CodeQL).
   const definitionStrings = [];
+  // Collect every definition first. The _EMPTY fallbacks are resolved in a
+  // second pass because a fallback may be defined before the block it belongs
+  // to, and pairing needs to know which block names exist.
+  const definitions = new Map();
   let m;
   while ((m = blockRe.exec(entryZone)) !== null) {
     const name = m[1];
     const content = m[2];
     if (name === 'ENTRY') continue; // skip the sentinel itself
     definitionStrings.push(m[0]); // full match, e.g. <!--FOO-->bar<!--/FOO-->
-    // EMPTY variants are the absent-field fallback (e.g. <!--ORG_EMPTY-->).
-    if (name.endsWith('_EMPTY')) {
-      const base = name.slice(0, -6);
-      const existing = blocks.get(base) || { present: '', absent: '' };
-      blocks.set(base, { ...existing, absent: content });
-    } else {
-      const existing = blocks.get(name) || { present: '', absent: '' };
-      blocks.set(name, { ...existing, present: content });
-    }
+    definitions.set(name, content);
+  }
+
+  const EMPTY_SUFFIX = '_EMPTY';
+  for (const [name, content] of definitions) {
+    if (name.endsWith(EMPTY_SUFFIX)) continue;
+    const existing = blocks.get(name) || { present: '', absent: '' };
+    blocks.set(name, { ...existing, present: content });
+  }
+  // An EMPTY variant is the absent-field fallback for a sibling block, and the
+  // renderer looks it up under the block's own name. Both spellings pair to the
+  // same block: <!--ORG_EMPTY--> and <!--ORG_BLOCK_EMPTY--> attach to ORG_BLOCK.
+  // Falling back to the bare stem keeps a FOO_EMPTY/FOO pair working.
+  for (const [name, content] of definitions) {
+    if (!name.endsWith(EMPTY_SUFFIX)) continue;
+    const stem = name.slice(0, -EMPTY_SUFFIX.length);
+    const base = definitions.has(`${stem}_BLOCK`) ? `${stem}_BLOCK` : stem;
+    const existing = blocks.get(base) || { present: '', absent: '' };
+    blocks.set(base, { ...existing, absent: content });
   }
 
   // Step 3: build the entry template by removing the captured block *definitions*
@@ -246,20 +269,29 @@ function parsePartial(source) {
 function fillEntry(entryTemplate, blocks, fields, blockValues) {
   let out = entryTemplate;
 
+  // Every replacement below passes a FUNCTION rather than the value directly.
+  // A string replacement argument is scanned by JS for $-patterns, so candidate
+  // text containing $&, $', $` or $$ (escaping leaves those sequences intact)
+  // would splice part of the template into the CV instead of being inserted
+  // literally. A replacer function's return value is never interpreted.
+
   // Resolve conditional blocks: replace {{BLOCK_NAME}} with the
   // present/absent markup depending on whether the field has a value.
   if (blockValues) {
     for (const [name, { value, present }] of blockValues) {
       const block = blocks.get(name);
       if (!block) continue;
-      const markup = present ? block.present.replace(`{{${name}}}`, value) : block.absent;
-      out = out.replace(`{{${name}}}`, markup);
+      const scalarKey = name.endsWith('_BLOCK') ? name.slice(0, -6) : name;
+      const markup = present 
+        ? block.present.replace(new RegExp(`\\{\\{(${name}|${scalarKey})\\}\\}`, 'g'), () => value) 
+        : block.absent;
+      out = out.replace(new RegExp(`\\{\\{${name}\\}\\}`, 'g'), () => markup);
     }
   }
 
   // Fill remaining scalar placeholders.
   for (const [key, value] of Object.entries(fields)) {
-    out = out.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
+    out = out.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), () => value);
   }
 
   return out;
@@ -275,7 +307,7 @@ function loadSectionPartials(templatePath) {
   if (!existsSync(sectionsDir)) return partials;
 
   const sectionNames = [
-    'competencies', 'experience', 'projects', 'education', 'certifications', 'skills',
+    'competencies', 'experience', 'projects', 'education', 'certifications', 'awards', 'skills',
   ];
   for (const name of sectionNames) {
     const partialPath = join(sectionsDir, `${name}.html`);
@@ -322,10 +354,11 @@ function buildExperience(entries, partial) {
         ? `\n    <div class="job-location">${escapeHtml(e.location)}</div>`
         : '';
       return `<div class="job">
-    <div class="job-title-line">
-      <span class="job-company">${escapeHtml(e.company)}</span> — <span class="job-role">${escapeHtml(e.role)}</span>
+    <div class="job-header">
+      <span class="job-company">${escapeHtml(e.company)}</span>
+      <span class="job-period">${escapeHtml(e.dates || e.period || '')}</span>
     </div>
-    <div class="job-period">${escapeHtml(e.dates || e.period || '')}</div>${location}
+    <div class="job-role">${escapeHtml(e.role)}</div>${location}
     <ul>
 ${bullets}
     </ul>
@@ -351,46 +384,18 @@ ${bullets}
   }).join('\n  ');
 }
 
-function buildEarlierExperience(entries, partial) {
-  if (!Array.isArray(entries) || entries.length === 0) return '';
-  if (!partial) {
-    return entries.filter(Boolean).map(e => {
-      const desc = e.description
-        ? `\n    <div class="earlier-item-desc">${escapeHtml(e.description)}</div>`
-        : '';
-      return `<div class="earlier-item">
-    <div class="earlier-item-title-line">
-      <span class="earlier-item-company">${escapeHtml(e.company)}</span> — <span class="earlier-item-role">${escapeHtml(e.role)}</span>
-    </div>
-    <div class="earlier-item-period">${escapeHtml(e.dates || e.period || '')}</div>${desc}
-  </div>`;
-    }).join('\n  ');
-  }
-
-  const { entryTemplate, blocks } = partial;
-  return entries.filter(Boolean).map(e => {
-    const blockValues = new Map([
-      ['DESC_BLOCK', { value: escapeHtml(e.description || ''), present: Boolean(e.description) }],
-    ]);
-    return fillEntry(entryTemplate, blocks, {
-      COMPANY: escapeHtml(e.company || ''),
-      ROLE: escapeHtml(e.role || ''),
-      PERIOD: escapeHtml(e.dates || e.period || ''),
-      DESC: escapeHtml(e.description || ''),
-    }, blockValues);
-  }).join('\n  ');
-}
-
 function buildProjects(entries, partial) {
   if (!Array.isArray(entries) || entries.length === 0) return '';
   if (!partial) {
     return entries.filter(Boolean).map(e => {
-      const org = e.org
-        ? ` — <span class="project-org">${escapeHtml(e.org)}</span>`
-        : '';
       const badge = e.badge
-        ? ` — ${escapeHtml(e.badge)}`
+        ? `<span class="project-badge">${escapeHtml(e.badge)}</span>`
         : '';
+      const nameText = escapeHtml(e.name || '');
+      const url = sanitizeUrl(e.url);
+      const nameHtml = url
+        ? `<a href="${url}">${nameText}</a>`
+        : nameText;
       // Prefer a single description; fall back to joining bullets into one line so
       // a bullets-shaped payload still renders inside the .project-desc block.
       const descText = e.description
@@ -402,7 +407,7 @@ function buildProjects(entries, partial) {
         ? `\n    <div class="project-tech">${escapeHtml(e.tech)}</div>`
         : '';
       return `<div class="project">
-    <div class="project-title"><span class="project-name">${escapeHtml(e.name)}</span>${org}${badge}</div>${desc}${tech}
+    <div class="project-title">${nameHtml}${badge}</div>${desc}${tech}
   </div>`;
     }).join('\n  ');
   }
@@ -412,14 +417,17 @@ function buildProjects(entries, partial) {
     const descText = e.description
       || (Array.isArray(e.bullets) ? e.bullets.filter(Boolean).join(' ') : '');
     const blockValues = new Map([
-      ['ORG_BLOCK', { value: escapeHtml(e.org || ''), present: Boolean(e.org) }],
       ['BADGE_BLOCK', { value: escapeHtml(e.badge || ''), present: Boolean(e.badge) }],
       ['DESC_BLOCK',  { value: escapeHtml(descText),      present: Boolean(descText) }],
       ['TECH_BLOCK',  { value: escapeHtml(e.tech || ''),  present: Boolean(e.tech) }],
     ]);
+    const nameText = escapeHtml(e.name || '');
+    const url = sanitizeUrl(e.url);
+    const nameHtml = url
+      ? `<a href="${url}">${nameText}</a>`
+      : nameText;
     return fillEntry(entryTemplate, blocks, {
-      NAME:  escapeHtml(e.name || ''),
-      ORG:   escapeHtml(e.org || ''),
+      NAME:  nameHtml,
       BADGE: escapeHtml(e.badge || ''),
       DESC:  escapeHtml(descText),
       TECH:  escapeHtml(e.tech || ''),
@@ -432,14 +440,16 @@ function buildEducation(entries, partial) {
   if (!partial) {
     return entries.filter(Boolean).map(e => {
       const org = e.org
-        ? ` — <span class="edu-org">${escapeHtml(e.org)}</span>`
+        ? ` <span class="edu-org">${escapeHtml(e.org)}</span>`
         : '';
       const desc = e.description
         ? `\n    <div class="edu-desc">${escapeHtml(e.description)}</div>`
         : '';
       return `<div class="edu-item">
-    <div class="edu-title"><strong>${escapeHtml(e.title)}</strong>${org}</div>
-    <div class="edu-year">${escapeHtml(e.year || '')}</div>${desc}
+    <div class="edu-header">
+      <div class="edu-title">${escapeHtml(e.title)}${org}</div>
+      <div class="edu-year">${escapeHtml(e.year || '')}</div>
+    </div>${desc}
   </div>`;
     }).join('\n  ');
   }
@@ -476,8 +486,8 @@ function buildCertifications(entries, partial) {
   const { entryTemplate, blocks } = partial;
   return entries.filter(Boolean).map(e => {
     const blockValues = new Map([
-      // Certifications use EMPTY variants so that absent fields still emit an
-      // empty <span> for table-cell alignment — not a bare removal.
+      // An absent field resolves to the partial's _EMPTY fallback, emitting an
+      // empty <span> for table-cell alignment rather than being removed.
       ['ORG_BLOCK',  { value: escapeHtml(e.org || ''),  present: Boolean(e.org) }],
       ['YEAR_BLOCK', { value: escapeHtml(e.year || ''), present: Boolean(e.year) }],
     ]);
@@ -487,6 +497,54 @@ function buildCertifications(entries, partial) {
       YEAR:  escapeHtml(e.year || ''),
     }, blockValues);
   }).join('\n    ');
+}
+
+// Awards mirror certifications: a title with an optional issuing body and year,
+// laid out on one baseline. Kept as its own builder rather than an alias so the
+// two can diverge (and so awards.html can be authored independently of
+// certifications.html) without one section's markup leaking into the other.
+function buildAwards(entries, partial) {
+  if (!Array.isArray(entries) || entries.length === 0) return '';
+  if (!partial) {
+    return entries.filter(Boolean).map(e => {
+      const org = e.org ? `<span class="award-org">${escapeHtml(e.org)}</span>` : '<span class="award-org"></span>';
+      const year = e.year ? `<span class="award-year">${escapeHtml(e.year)}</span>` : '<span class="award-year"></span>';
+      return `<div class="award-item">
+      <span class="award-title">${escapeHtml(e.title)}</span>
+      ${org}
+      ${year}
+    </div>`;
+    }).join('\n    ');
+  }
+
+  const { entryTemplate, blocks } = partial;
+  return entries.filter(Boolean).map(e => {
+    const blockValues = new Map([
+      // As with certifications, an absent field resolves to the partial's
+      // _EMPTY fallback so the table cells stay aligned across rows.
+      ['ORG_BLOCK',  { value: escapeHtml(e.org || ''),  present: Boolean(e.org) }],
+      ['YEAR_BLOCK', { value: escapeHtml(e.year || ''), present: Boolean(e.year) }],
+    ]);
+    return fillEntry(entryTemplate, blocks, {
+      TITLE: escapeHtml(e.title || ''),
+      ORG:   escapeHtml(e.org || ''),
+      YEAR:  escapeHtml(e.year || ''),
+    }, blockValues);
+  }).join('\n    ');
+}
+
+// Interests renders as one comma-joined, sentence-cased line rather than a
+// repeating table like certifications/awards, so a partial's entryTemplate
+// (built for one row per entry) doesn't fit — html-only, no partial support,
+// same tradeoff certifications/competencies make for having no LaTeX marker.
+function buildInterests(items) {
+  if (!Array.isArray(items) || items.length === 0) return '';
+  return items
+    .filter(Boolean)
+    .map(String)
+    .map((item, idx) => (idx === 0 ? item : item.charAt(0).toLowerCase() + item.slice(1)))
+    .map(item => escapeHtml(item))
+    .join(', ');
 }
 
 function buildSkills(categories, partial) {
@@ -511,7 +569,7 @@ function buildSkills(categories, partial) {
       ITEMS_TEXT:  escapeHtml(joinItems(c.items)),
     }, blockValues);
   }).join('\n');
-  return items;
+  return `<div class="skills-grid">\n${items}\n  </div>`;
 }
 
 // Rebuild the whole .contact-row block. Its markup uses fixed "|" separators
@@ -523,22 +581,12 @@ function buildSkills(categories, partial) {
 function buildContactRow(candidate) {
   const c = candidate || {};
   const items = [];
-  if (c.portfolio && c.portfolio.url) {
-    items.push(`<a href="${sanitizeUrl(c.portfolio.url)}">${escapeHtml(c.portfolio.display || c.portfolio.url)}</a>`);
-  }
   if (c.phone) {
-    // wa.me deep-link instead of tel: (#personalization) — opens a WhatsApp
-    // chat instead of dialing. wa.me requires digits only (no +, spaces,
-    // dashes, parens); the DISPLAYED text stays the original formatted number.
-    const digits = String(c.phone).replace(/[^\d]/g, '');
-    const wa = digits ? sanitizeUrl(`https://wa.me/${digits}`) : '';
-    if (wa) items.push(`<a href="${wa}">${escapeHtml(c.phone)}</a>`);
+    const tel = sanitizeUrl('tel:' + String(c.phone).replace(/\s+/g, ''));
+    items.push(`<a href="${tel}">${escapeHtml(c.phone)}</a>`);
   }
   if (c.email) {
     items.push(`<a href="${sanitizeUrl('mailto:' + c.email)}">${escapeHtml(c.email)}</a>`);
-  }
-  if (c.location) {
-    items.push(`<span>${escapeHtml(c.location)}</span>`);
   }
   if (c.linkedin && c.linkedin.url) {
     items.push(`<a href="${sanitizeUrl(c.linkedin.url)}">${escapeHtml(c.linkedin.display || c.linkedin.url)}</a>`);
@@ -548,6 +596,12 @@ function buildContactRow(candidate) {
     if (githubHref) {
       items.push(`<a href="${githubHref}">${escapeHtml(c.github.display || c.github.url)}</a>`);
     }
+  }
+  if (c.portfolio && c.portfolio.url) {
+    items.push(`<a href="${sanitizeUrl(c.portfolio.url)}">${escapeHtml(c.portfolio.display || c.portfolio.url)}</a>`);
+  }
+  if (c.location) {
+    items.push(`<span>${escapeHtml(c.location)}</span>`);
   }
   const sep = '\n      <span class="separator">|</span>\n      ';
   return `<div class="contact-row">\n      ${items.join(sep)}\n    </div>`;
@@ -575,13 +629,16 @@ function renderReport(payload, partials) {
     COMPETENCIES: buildCompetencies(payload.competencies, partials.get('competencies')),
     SECTION_EXPERIENCE: escapeHtml(sectionTitles.experience),
     EXPERIENCE: buildExperience(payload.experience, partials.get('experience')),
-    EARLIER_EXPERIENCE: buildEarlierExperience(payload.earlier_experience, partials.get('earlier_experience')),
     SECTION_PROJECTS: escapeHtml(sectionTitles.projects),
     PROJECTS: buildProjects(payload.projects, partials.get('projects')),
     SECTION_EDUCATION: escapeHtml(sectionTitles.education),
     EDUCATION: buildEducation(payload.education, partials.get('education')),
     SECTION_CERTIFICATIONS: escapeHtml(sectionTitles.certifications),
     CERTIFICATIONS: buildCertifications(payload.certifications, partials.get('certifications')),
+    SECTION_AWARDS: escapeHtml(sectionTitles.awards),
+    AWARDS: buildAwards(payload.awards, partials.get('awards')),
+    SECTION_INTERESTS: escapeHtml(sectionTitles.interests),
+    INTERESTS: buildInterests(payload.interests),
     SECTION_SKILLS: escapeHtml(sectionTitles.skills),
     SKILLS: buildSkills(payload.skills, partials.get('skills')),
   };
@@ -638,10 +695,10 @@ async function writeAndReport(html, absOutput, payload, extra = {}) {
     counts: {
       competencies: (payload.competencies || []).length,
       experienceEntries: (payload.experience || []).length,
-      earlierExperienceEntries: (payload.earlier_experience || []).length,
       projectEntries: (payload.projects || []).length,
       educationEntries: (payload.education || []).length,
       certificationEntries: (payload.certifications || []).length,
+      awardEntries: (payload.awards || []).length,
       skillCategories: (payload.skills || []).length,
       totalBullets: countBullets(payload),
     },
@@ -746,15 +803,8 @@ async function runSelfTest() {
         'Reduced regression test time by 60% through parallel execution',
       ],
     }],
-    earlier_experience: [{
-      company: 'Old Corp',
-      role: 'Junior Engineer',
-      dates: '2018 - 2020',
-      description: 'Built internal tooling and maintained legacy PHP services.',
-    }],
     projects: [{
       name: 'Test Project',
-      org: 'Test Organisation',
       badge: 'Open Source',
       tech: 'Python, FastAPI, Docker',
       description: 'Built a REST API with automated test coverage exceeding 90%.',
@@ -766,10 +816,12 @@ async function runSelfTest() {
       description: 'Coursework: Data Structures, Algorithms, Machine Learning.',
     }],
     certifications: [{ title: 'Certified Kubernetes Administrator', org: 'CNCF', year: '2025' }],
+    awards: [{ title: 'Gold Medal, International Olympiad in Informatics', org: 'IOI', year: '2023' }],
     skills: [
       { category: 'Languages', items: 'Python, JavaScript, TypeScript' },
       { category: 'Frameworks', items: ['FastAPI', 'React', 'PyTorch'] },
     ],
+    interests: ['Reading sci-fi & fantasy', 'Hiking', 'Chess'],
   };
 
   if (!existsSync(TEMPLATE_PATH)) {
@@ -798,15 +850,10 @@ async function runSelfTest() {
     process.exit(1);
   }
 
-  // Guard the wa.me phone link (#personalization): the href must be a digits-only
-  // WhatsApp deep link (no +, spaces, dashes), while the DISPLAYED text stays the
-  // original formatted phone number from the sample ('+1 234 567 8900').
-  if (!html.includes('href="https://wa.me/12345678900"') || !html.includes('>+1 234 567 8900<')) {
-    console.error('Self-test failed: phone did not render as a digits-only wa.me link with the original display text');
-    process.exit(1);
-  }
-  if (html.includes('href="tel:')) {
-    console.error('Self-test failed: phone still rendered a tel: link instead of wa.me');
+  // Guard buildInterests(): comma-joined, sentence-cased (only the first item
+  // keeps its capital), and escaped like every other free-text field.
+  if (!html.includes('Reading sci-fi &amp; fantasy, hiking, chess')) {
+    console.error('Self-test failed: Interests did not render as an escaped, comma-joined, sentence-cased line');
     process.exit(1);
   }
 
@@ -847,21 +894,6 @@ async function runSelfTest() {
     process.exit(1);
   }
 
-  // Contact order is part of the Varela recruiter-scan layout: website, phone,
-  // email, location, LinkedIn, then GitHub.
-  const contactOrder = [
-    'test.example.com',
-    '+1 234 567 8900',
-    'test@example.com',
-    'City, State',
-    'linkedin.com/in/test',
-    'github.com/test',
-  ].map(item => html.indexOf(item));
-  if (contactOrder.some((position, index) => position === -1 || (index > 0 && position <= contactOrder[index - 1]))) {
-    console.error('Self-test failed: contact row must render website, phone, email, location, LinkedIn, then GitHub');
-    process.exit(1);
-  }
-
   // Guard that section partial rendering produces expected class names (so a
   // broken partial file doesn't silently remove structural markup).
   if (!html.includes('class="job"')) {
@@ -880,52 +912,16 @@ async function runSelfTest() {
     console.error('Self-test failed: education section is missing .edu-item class');
     process.exit(1);
   }
-  if (!html.includes('class="earlier-item"')) {
-    console.error('Self-test failed: earlier-experience section is missing .earlier-item class');
-    process.exit(1);
-  }
-  if (!html.includes('Old Corp') || !html.includes('Junior Engineer')) {
-    console.error('Self-test failed: earlier-experience entry fields not found in output');
-    process.exit(1);
-  }
   if (!html.includes('class="cert-item"')) {
     console.error('Self-test failed: certifications section is missing .cert-item class');
     process.exit(1);
   }
-
-  // Guard the CAREER merge (#career-merge): one shared "Career" heading covers
-  // both tiers, the old two-column .job-header/.edu-header flex wrappers are
-  // gone, and dates render in their own .job-period/.earlier-item-period line
-  // ahead of the company/role title line.
-  if (!html.includes('>Career<')) {
-    console.error('Self-test failed: default "Career" section title not found');
+  if (!html.includes('class="award-item"')) {
+    console.error('Self-test failed: awards section is missing .award-item class');
     process.exit(1);
   }
-  if (!html.includes('>About Me<')) {
-    console.error('Self-test failed: default "About Me" section title not found');
-    process.exit(1);
-  }
-  if (html.includes('class="job-header"') || html.includes('class="edu-header"') || html.includes('class="earlier-item-header"')) {
-    console.error('Self-test failed: an old two-column header wrapper class leaked back into the output');
-    process.exit(1);
-  }
-  if (!html.includes('class="job-period"') || !html.includes('class="job-title-line"')) {
-    console.error('Self-test failed: job-period/job-title-line (title-above-date layout) missing');
-    process.exit(1);
-  }
-  if (html.indexOf('class="job-title-line"') > html.indexOf('class="job-period"')) {
-    console.error('Self-test failed: job-title-line must render BEFORE job-period (title above date)');
-    process.exit(1);
-  }
-
-  // Project and education title pairs must preserve the same emphasis hierarchy
-  // as Career: primary label at heading weight, organisation regular, date below.
-  if (!html.includes('<span class="project-name">Test Project</span> — <span class="project-org">Test Organisation</span>')) {
-    console.error('Self-test failed: project title must render project name and organisation with Career-style hierarchy');
-    process.exit(1);
-  }
-  if (!html.includes('<strong>Bachelor of Science in Computer Science</strong> — <span class="edu-org">Test University</span>')) {
-    console.error('Self-test failed: education title must render degree and institution with Career-style hierarchy');
+  if (!html.includes('class="skills-grid"')) {
+    console.error('Self-test failed: skills section is missing .skills-grid wrapper');
     process.exit(1);
   }
 
@@ -960,22 +956,6 @@ async function runSelfTest() {
     process.exit(1);
   }
 
-  // Guard: no earlier_experience entries must not render any .earlier-item
-  // markup — its content lives inside the shared "CAREER" section
-  // (#career-merge), which stays justified by `experience` alone.
-  const noEarlierSample = { ...sample, earlier_experience: [] };
-  let noEarlierHtml;
-  try {
-    noEarlierHtml = renderHtml(template, noEarlierSample, TEMPLATE_PATH);
-  } catch (err) {
-    console.error(`Self-test failed (no-earlier-experience variant): ${err.message}`);
-    process.exit(1);
-  }
-  if (noEarlierHtml.includes('class="earlier-item"')) {
-    console.error('Self-test failed: empty earlier_experience still rendered .earlier-item markup');
-    process.exit(1);
-  }
-
   // Test with certifications that are missing optional org/year fields to verify
   // the EMPTY block fallback (empty <span> for table-cell alignment).
   const noOrgCert = {
@@ -991,7 +971,8 @@ async function runSelfTest() {
     process.exit(1);
   }
   // The partial should emit an empty <span class="cert-org"> for alignment.
-  if (!certHtml.includes('class="cert-org"')) {
+  const orgCount = (certHtml.match(/class="cert-org"/g) || []).length;
+  if (orgCount !== 2) {
     console.error('Self-test failed: cert-org empty-block not emitted for table alignment');
     process.exit(1);
   }
