@@ -1,5 +1,18 @@
 # Mode: pdf — ATS-Optimized PDF Generation
 
+## CRITICAL: CV Sourcing Rules
+
+**All CV bullets must be traceable to a sentence in `cv.md` or `config/profile.yml`.** This is non-negotiable. Evaluation reports (Block C/E/F) are illustrative interview-prep narrative, NEVER a content source for the generated CV.
+
+- **DO:** Extract a bullet from cv.md, reword it with JD keywords if appropriate, include it in the generated CV.
+- **DO NOT:** Copy illustrative phrasing from an evaluation report's Block C ("Sell Senior Without Lying" framing), Block E (customization suggestions), or Block F (interview STAR stories) into the CV as if it were verified content.
+- **Protection layers:** Step 21 runs TWO mandatory fact-checkers: (1) Metric fabrications (numbers + metric nouns), (2) Cross-company misattribution and company-context validation. Both must pass before PDF rendering.
+
+When in doubt about sourcing:
+1. Can you point to a specific sentence in `cv.md` that documents this claim? If yes, use it.
+2. If the claim is a metric (e.g., "50 engineers", "35%"), is it documented in `config/cv-facts-sources.json` with a cv.md line citation? If yes, it is allowed.
+3. If you cannot answer "yes" to (1) or (2), DO NOT include the claim in the CV. Tell the user the JD requires a skill they do not have (a gap), and let them decide what to do.
+
 ## Full pipeline
 
 ## Application-scoped artifacts
@@ -44,9 +57,14 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 18. Read `name` from `config/profile.yml` → normalize to kebab-case lowercase (e.g. "John Doe" → "john-doe") → `{candidate}`
 19. Build the render payload (see the **JSON Input Schema** below) from the tailored content — emit compact structured JSON, **not** full HTML markup — and write it to `/tmp/cv-{candidate}-{company}.json`. **Always include `candidate.github` and `candidate.portfolio` when `config/profile.yml` has them set** (`candidate.github`, `candidate.portfolio_url`) — they render in the contact row alongside phone/email/LinkedIn and silently dropping them (e.g. by copying an older payload example that predates a field) loses real, already-configured contact info. Omit only the fields genuinely absent from the profile.
 20. Run `node build-cv-html.mjs /tmp/cv-{candidate}-{company}.json {html-path} {template}`, where `{html-path}` is the active bundle's `cv/tailored/vNNN/cv.html` or `output/cv-{candidate}-{company}.html` for a one-off CV, and `{template}` is the path printed by **Selecting the template** below (omit it to use the base template). The script owns every tag, CSS class, and HTML escaping. Keep the HTML outside temporary storage because the dashboard's `D` hotkey regenerates from it.
-21. Run the fact gate against the generated HTML: `node verify-cv-facts.mjs {html-path}`
-    - This is a hard gate before PDF rendering.
-    - If it fails, stop and fix the generated HTML by removing invented metrics or adding verified evidence to `cv.md`, `article-digest.md`, or `config/cv-facts.json`.
+21. **Fact checking — both gates mandatory.** Run the fact-checker twice. If either fails, stop and fix the generated HTML before proceeding.
+    a. `node verify-cv-facts.mjs {html-path}` — Catches metric fabrications (numbers + metric nouns). Hard gate.
+    b. `node verify-cv-facts-advanced.mjs {html-path}` — Catches cross-company misattribution and validates company-context claims. Hard gate.
+    - If either fails, stop and fix the generated HTML by:
+      - Removing invented metrics (add verified evidence to `cv.md`, `article-digest.md`, or `config/cv-facts-sources.json`)
+      - Removing cross-company misattributions (claims must come from the company section they're assigned to in cv.md)
+      - Removing prose fabrications not explicitly documented in cv.md
+    - Both gates must pass cleanly before proceeding to Step 22.
 22. Execute: `node generate-pdf.mjs {html-path} {pdf-path} --format={letter|a4} --report={report number}`, where `{pdf-path}` is the active bundle's `cv/tailored/vNNN/cv.pdf` or `output/cv-{candidate}-{company}-{YYYY-MM-DD}.pdf` for a one-off CV. `{report number}` is the NNN from the report filename/link (e.g. `008` for `reports/008-acme-….md`), not the tracker `#` column. Pass it whenever the application has (or will have) a report; it records the PDF↔report linkage in `data/pdf-index.tsv` so the dashboard can open and regenerate the exact nested or flat HTML/PDF pair. Omit it only for one-off CVs with no tracker entry.
     - The rendered PDF has a two-page warning threshold by default. `--max-pages=N` accepts a positive integer; pass `--max-pages=1` when the user or market prefers a one-page CV.
     - If the rendered PDF exceeds its threshold, generation warns loudly with the actual and allowed page counts plus trimming guidance, then reports and indexes the unchanged PDF so existing longer-CV flows keep working. If it's still over budget after Step 13's tiering, demote another Compressed role to Earlier Career before trimming bullets further — tiering is the primary lever, bullet-by-bullet trimming is the fallback.
