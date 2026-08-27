@@ -39,8 +39,14 @@
 
 import { readFileSync, existsSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'fs';
 import { join, dirname } from 'path';
-import { fileURLToPath, pathToFileURL } from 'url';
-import yaml from 'js-yaml';
+import { fileURLToPath } from 'url';
+import * as yaml from 'js-yaml';
+
+// Only validateFlags: this module keeps its own flagValue (see below), so
+// importing the shared one too would shadow it.
+import { validateFlags } from './lib/cli-flags.mjs';
+import { localToday } from './lib/local-today.mjs';
+import { isMainModule } from './lib/is-main-module.mjs';
 
 const CAREER_OPS = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SESSIONS_DIR = join(CAREER_OPS, 'interview-prep', 'sessions');
@@ -60,9 +66,17 @@ function isValidDateStr(s) {
  * Current ISO week (Monday–Sunday) containing `now`, as {from, to} strings.
  * `now` is injectable so callers (and tests) never depend on wall-clock time
  * implicitly.
+ *
+ * WHICH day `now` falls on is read from the LOCAL calendar; the arithmetic that
+ * follows stays anchored at UTC midnight. That is the split lib/local-today.mjs
+ * documents, and both halves matter here. Reading getUTCDate() made a Sunday
+ * evening in the Americas resolve to Monday, so "this week" was the week that
+ * had not started yet: every session the user logged Mon–Sun fell outside
+ * inRange() and the digest for the week just ended came back empty — which
+ * reads as "a quiet week", not as a wrong window.
  */
 export function computeDefaultRange(now = new Date()) {
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const d = new Date(`${localToday(now)}T00:00:00Z`);
   const dayIdx = (d.getUTCDay() + 6) % 7; // Mon=0 .. Sun=6
   d.setUTCDate(d.getUTCDate() - dayIdx); // roll back to Monday
   const from = d.toISOString().slice(0, 10);
@@ -74,6 +88,29 @@ export function computeDefaultRange(now = new Date()) {
 
 function inRange(dateStr, from, to) {
   return isValidDateStr(dateStr) && dateStr >= from && dateStr <= to;
+}
+
+/**
+ * Value of a value-taking flag, accepting BOTH `--flag value` and `--flag=value`.
+ *
+ * `args.indexOf('--from')` is -1 for the `=` form, so a space-separated-only
+ * lookup silently DISCARDS the bound the caller supplied and the digest then
+ * reports a different week than the one that was asked for — the same silent
+ * discard `computeWeeklyDigest` already refuses to perform for a half-supplied
+ * range. company-history.mjs carries this same note and the same fix.
+ *
+ * @param {string[]} args - argv slice.
+ * @param {string} flag - Flag name including leading dashes, e.g. '--from'.
+ * @returns {string|undefined} The value, or undefined when the flag is absent.
+ */
+export function flagValue(args, flag) {
+  // `--flag=value` first: indexOf() can't see it, so checking it second would
+  // let the space-separated lookup fall through and drop the value.
+  const eq = args.find((a) => a.startsWith(`${flag}=`));
+  if (eq) return eq.slice(flag.length + 1);
+  const idx = args.indexOf(flag);
+  if (idx === -1) return undefined;
+  return args[idx + 1];
 }
 
 // ── Session file parsing ────────────────────────────────────────────
@@ -382,12 +419,43 @@ async function runSelfTest() {
 
   // computeDefaultRange: a known Wednesday (2026-07-22) should yield Mon
   // 2026-07-20 .. Sun 2026-07-26.
-  const wed = computeDefaultRange(new Date('2026-07-22T12:00:00Z'));
+  //
+  // Built with the LOCAL Date constructor, not a Z instant. The range is the
+  // week containing the caller's own calendar day, so `new Date('...T00:00:00Z')`
+  // names a different day depending on where the suite runs and these three
+  // assertions would pass or fail by timezone rather than by behaviour. Local
+  // noon on a named date is that date everywhere.
+  const localNoon = (y, m, d) => new Date(y, m - 1, d, 12, 0, 0);
+  const wed = computeDefaultRange(localNoon(2026, 7, 22));
   check(wed.from === '2026-07-20' && wed.to === '2026-07-26', 'computeDefaultRange resolves the containing Mon-Sun week');
-  const mon = computeDefaultRange(new Date('2026-07-20T00:00:00Z'));
+  const mon = computeDefaultRange(localNoon(2026, 7, 20));
   check(mon.from === '2026-07-20' && mon.to === '2026-07-26', 'computeDefaultRange handles Monday itself as the range start');
-  const sun = computeDefaultRange(new Date('2026-07-26T23:00:00Z'));
+  const sun = computeDefaultRange(localNoon(2026, 7, 26));
   check(sun.from === '2026-07-20' && sun.to === '2026-07-26', 'computeDefaultRange handles Sunday itself as the range end');
+  // The two instants where reading getUTCDate() moves the answer a whole WEEK,
+  // rather than just a day: late on the local Sunday (west of Greenwich the UTC
+  // day is already Monday) and early on the local Monday (east of Greenwich it
+  // is still Sunday). One of the two fires in every non-UTC zone; in UTC both
+  // are no-ops, which is why tests/local-today-gates.test.mjs pins the same
+  // property under an explicit TZ.
+  for (const [now, label] of [
+    [new Date(2026, 6, 26, 23, 30, 0), 'Sunday 23:30 local'],
+    [new Date(2026, 6, 20, 0, 30, 0), 'Monday 00:30 local'],
+  ]) {
+    const r = computeDefaultRange(now);
+    check(r.from <= localToday(now) && localToday(now) <= r.to,
+      `computeDefaultRange contains the caller's own day (${label})`);
+  }
+
+  // flagValue: both CLI spellings must reach the same value. The `=` form used
+  // to be invisible to indexOf(), so `--from=2020-01-01` silently produced the
+  // CURRENT week's digest instead of the requested one.
+  check(flagValue(['--from', '2020-01-01'], '--from') === '2020-01-01', 'flagValue reads the space-separated form');
+  check(flagValue(['--from=2020-01-01'], '--from') === '2020-01-01', 'flagValue reads the --flag=value form');
+  check(flagValue(['--summary'], '--from') === undefined, 'flagValue returns undefined for an absent flag');
+  check(flagValue(['--from='], '--from') === '', 'flagValue reports an explicitly empty value as empty, not absent');
+  check(flagValue(['--dir=/tmp/x=y'], '--dir') === '/tmp/x=y', 'flagValue keeps later "=" characters in the value');
+  check(flagValue(['--to=2020-01-07', '--from=2020-01-01'], '--from') === '2020-01-01', 'flagValue matches its own flag, not a similarly-shaped neighbour');
 
   // parseSessionFile: well-formed session with two competency tags.
   const goodSession = [
@@ -617,21 +685,53 @@ async function runSelfTest() {
 
 // ── CLI ──────────────────────────────────────────────────────────────
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+const KNOWN_FLAGS = ['--from', '--to', '--dir', '--summary', '--self-test', '--help', '-h'];
+const VALUE_FLAGS = ['--from', '--to', '--dir'];
+
+const USAGE = `Usage:
+  node weekly-digest.mjs                        # JSON digest for the current ISO week
+  node weekly-digest.mjs --summary              # human-readable roll-up
+  node weekly-digest.mjs --from <YYYY-MM-DD>    # start of the window
+  node weekly-digest.mjs --to <YYYY-MM-DD>      # end of the window
+  node weekly-digest.mjs --dir <path>           # a different interview-prep/sessions dir
+  node weekly-digest.mjs --self-test            # run the built-in fixtures
+  node weekly-digest.mjs --help                 # show this message
+
+Both bounds are optional; supplying one without the other is rejected rather
+than silently widened.`;
+
+if (isMainModule(import.meta.url)) {
   const args = process.argv.slice(2);
+
+  // The script had no --help and no unrecognized-flag check at all, so a
+  // mistyped --dir was ignored and the digest silently rolled up
+  // interview-prep/sessions instead of the directory that was asked for —
+  // the same silent discard #2402 already fixed here for the `--from=` form
+  // (#2919). Inside the main-module guard so importers are unaffected.
+  // requireOperand: --from/--to already reject a swallowed flag indirectly
+  // (isValidDateStr fails on e.g. "--dir" below), but --dir has no validation
+  // at all — `--dir --from 2020-01-01` would silently scan a directory
+  // literally named "--from" at exit 0 (#3087). Opting in here closes that
+  // gap; it only changes the --from/--to message in the same edge case, from
+  // "Invalid --from/--to date" to "requires a value" — still a clear, non-zero
+  // exit either way.
+  validateFlags(args, KNOWN_FLAGS, USAGE, { valueFlags: VALUE_FLAGS, requireOperand: true });
+
   if (args.includes('--self-test')) {
     await runSelfTest();
   }
 
   const summaryMode = args.includes('--summary');
-  const fromIdx = args.indexOf('--from');
-  const toIdx = args.indexOf('--to');
-  const dirIdx = args.indexOf('--dir');
-  const from = fromIdx !== -1 ? args[fromIdx + 1] : undefined;
-  const to = toIdx !== -1 ? args[toIdx + 1] : undefined;
-  const sessionsDir = dirIdx !== -1 && args[dirIdx + 1] !== undefined ? args[dirIdx + 1] : DEFAULT_SESSIONS_DIR;
+  const from = flagValue(args, '--from');
+  const to = flagValue(args, '--to');
+  const dirValue = flagValue(args, '--dir');
+  const sessionsDir = dirValue ? dirValue : DEFAULT_SESSIONS_DIR;
 
-  if ((from && !isValidDateStr(from)) || (to && !isValidDateStr(to))) {
+  // `!== undefined`, not truthiness: an explicitly EMPTY bound (`--from=`) is a
+  // malformed date the caller typed, not an absent flag. Treating it as absent
+  // let '' through as a range bound, and `dateStr >= ''` is true for every
+  // session — silently widening the window instead of reporting the mistake.
+  if ((from !== undefined && !isValidDateStr(from)) || (to !== undefined && !isValidDateStr(to))) {
     console.error('  Invalid --from/--to date — expected YYYY-MM-DD');
     process.exit(1);
   }

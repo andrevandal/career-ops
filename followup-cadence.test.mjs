@@ -7,14 +7,36 @@
  * Run: node followup-cadence.test.mjs
  */
 
-import {
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
+
+const ROOT = dirname(fileURLToPath(import.meta.url));
+const DEFAULT_CADENCE_PROFILE = join(ROOT, 'tests', 'fixtures', 'profile-default-cadence.yml');
+const CUSTOM_CADENCE_PROFILE = join(ROOT, 'tests', 'fixtures', 'profile-custom-cadence.yml');
+
+// Pin the cadence source BEFORE followup-cadence.mjs is evaluated. Its
+// module-level `CADENCE = resolveCadenceConfig()` reads CAREER_OPS_PROFILE at
+// import time and otherwise falls back to the USER's config/profile.yml — so
+// on a machine where the user customized followup_cadence, assertions written
+// against DEFAULT_CADENCE failed on a perfectly healthy install (#2268).
+//
+// The import below must stay DYNAMIC: ESM hoists static imports above every
+// statement in this file, so a static import would run the module before this
+// assignment and the pin would do nothing.
+process.env.CAREER_OPS_PROFILE = DEFAULT_CADENCE_PROFILE;
+
+const {
   computeNextFollowupDate,
   addDays,
   parseDate,
   DEFAULT_CADENCE,
   parseFollowups,
   analyzeFromContent,
-} from './followup-cadence.mjs';
+  normalizeStatus,
+  resolveCadenceConfig,
+  loadProfileCadence,
+  parseAppliedDaysOverride,
+} = await import('./followup-cadence.mjs');
 
 let passed = 0;
 let failed = 0;
@@ -163,6 +185,67 @@ eq(
   'analyzeFromContent defaults followupsContent to empty string when omitted',
   missingFollowupsArg.entries.some((e) => e.urgency === 'cold'),
   false,
+);
+
+// Hired aliases from templates/states.yml must normalize to 'hired'. Before
+// this, 'Accepted'/'Contratado' normalized to themselves, so stats/funnel/
+// company-history consumers looking for 'hired' silently dropped those rows.
+for (const raw of ['Hired', 'Accepted', 'accept', 'Contratado', 'contratada']) {
+  eq(`normalizeStatus('${raw}') canonicalizes to hired`, normalizeStatus(raw), 'hired');
+}
+
+// #2268 — the suite pins the profile so a user's own followup_cadence can't
+// turn a healthy install red. These two guard the pin from the opposite
+// failure: pinning must not degrade into ignoring the profile altogether.
+eq(
+  'a fixture profile with no followup_cadence yields the defaults',
+  loadProfileCadence(DEFAULT_CADENCE_PROFILE),
+  {},
+);
+eq(
+  'a customized profile is still read through profilePath',
+  resolveCadenceConfig({ profilePath: CUSTOM_CADENCE_PROFILE, appliedDays: null }),
+  {
+    applied_first: 3,
+    applied_subsequent: 30,
+    applied_max_followups: 5,
+    responded_initial: 2,
+    responded_subsequent: 9,
+    interview_thankyou: 4,
+  },
+);
+eq(
+  'the pinned default profile resolves to DEFAULT_CADENCE',
+  resolveCadenceConfig({ profilePath: DEFAULT_CADENCE_PROFILE, appliedDays: null }),
+  DEFAULT_CADENCE,
+);
+
+// --- parseAppliedDaysOverride (--applied-days value validation) ---
+//
+// A whole-string match, not a bare parseInt: parseInt truncates '1.5' to 1
+// and '10days' to 10 instead of rejecting them, which would silently apply a
+// value the caller never actually supplied — the same wrong-answer-at-exit-0
+// shape #3196 fixed for the flag NAME.
+eq("parseAppliedDaysOverride('10') is 10", parseAppliedDaysOverride('10'), 10);
+eq("parseAppliedDaysOverride('0') is 0", parseAppliedDaysOverride('0'), 0);
+eq("parseAppliedDaysOverride('1.5') is rejected, not truncated to 1", parseAppliedDaysOverride('1.5'), null);
+eq("parseAppliedDaysOverride('10days') is rejected, not truncated to 10", parseAppliedDaysOverride('10days'), null);
+eq("parseAppliedDaysOverride('-5') is rejected (no negative window)", parseAppliedDaysOverride('-5'), null);
+eq("parseAppliedDaysOverride('abc') is rejected", parseAppliedDaysOverride('abc'), null);
+eq('parseAppliedDaysOverride(undefined) is null (flag absent)', parseAppliedDaysOverride(undefined), null);
+
+// End-to-end: the parsed override actually reaches the effective cadence,
+// not just "the CLI didn't error" — CodeRabbit's review on #3199 flagged that
+// a passing flag-validation test alone doesn't prove the value took effect.
+eq(
+  "resolveCadenceConfig honors parseAppliedDaysOverride('10') as applied_first",
+  resolveCadenceConfig({ profilePath: DEFAULT_CADENCE_PROFILE, appliedDays: parseAppliedDaysOverride('10') }).applied_first,
+  10,
+);
+eq(
+  'resolveCadenceConfig falls back to the default when the override is rejected',
+  resolveCadenceConfig({ profilePath: DEFAULT_CADENCE_PROFILE, appliedDays: parseAppliedDaysOverride('10days') }).applied_first,
+  DEFAULT_CADENCE.applied_first,
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
