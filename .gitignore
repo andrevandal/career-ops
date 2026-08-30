@@ -168,3 +168,14 @@ documents/*
 # Intake fingerprints — the recorded source filenames may themselves carry
 # PII (e.g. cv/jane-doe-master-cv.pdf). #1723
 data/intake-state.json
+
+# Private personal data — tracked separately in andrevandal/career-ops-private-data
+# (never commit to this public fork). See ~/.career-ops-private-git.
+drafts/
+config/cv-facts-sources.json
+FABRICATION-FIX.md
+apply-shippo.js
+apply_electric.mjs
+check_form.mjs
+test-fabrications.mjs
+verify-cv-facts-advanced.mjs
