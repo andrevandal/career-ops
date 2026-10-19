@@ -68,10 +68,6 @@ Run `npm run jd:similarity -- {bundle-root}/jd/current.md {bundle-root}/jd/previ
 19. Run the fact gate against the generated HTML: `node verify-cv-facts.mjs {html-path}`
     - This is a hard gate before PDF rendering.
     - If it fails, stop and fix the generated HTML by removing invented metrics or adding verified evidence to `cv.md`, `article-digest.md`, or `config/cv-facts.json`.
-19b. Run the completeness gate: `node verify-cv-completeness.mjs {html-path}` (optional `--cv={path}` if not the root `cv.md`).
-    - This is a second hard gate before PDF rendering, independent of the fact gate above: `verify-cv-facts.mjs` checks that numeric/metric claims trace back to a source, but a CV can pass that check while silently dropping entire `cv.md` Experience entries or showing an ended role as still ongoing — exactly what happened across three batch-produced CVs on 2026-09-28 (reports #423-#425) before this gate existed.
-    - Checks two things against `cv.md`'s `## Experience` section: (1) every role is present in the generated CV (compacted for old/low-relevance roles is fine per `modes/_custom.md`; omitted is not), and (2) no role `cv.md` shows as ended appears in the CV with a "Current"/"Present"/"Now" end-date — dates and tense must be copied from `cv.md` verbatim, never re-derived.
-    - If it fails, fix the payload (`/tmp/cv-{candidate}-{company}.json`): add the missing entries (compact form is `Company — Role (dates)` plus one summary bullet) or correct the stale date, then re-run Step 18 and both gates.
 20. **Hiring-manager audit — off by default, opt-in only.** Run `modes/pdf/hm-audit.md` if and only if one of these is true; otherwise skip straight to Step 21 without prompting.
     - The invocation carried `--hm-audit` (`/career-ops pdf --hm-audit`, or the same flag on a natural-language request).
     - `modes/_custom.md` turns it on as a house rule.
