@@ -279,3 +279,17 @@ data/interview-prep/
 .next/
 web/.next/
 web/out/
+
+# Private/local (andrevandal fork)
+drafts/
+.docs/
+.superpowers/
+config/cv-facts-sources.json
+FABRICATION-FIX.md
+PRIVATE-README.md
+apply-shippo.js
+apply_electric.mjs
+check_form.mjs
+test-fabrications.mjs
+*.bak
+verify-cv-facts-advanced.mjs

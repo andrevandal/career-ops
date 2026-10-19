@@ -1718,7 +1718,16 @@ async function generatePDF() {
   }
 
   // Fact gate, on the normalized HTML: the document that actually prints.
-  if (!skipFactCheck && cvMarkdown) await runFactGate(html, basename(inputPath));
+  if (!skipFactCheck && cvMarkdown) {
+    await runFactGate(html, basename(inputPath));
+
+    // Local completeness gate (#3612): catches a dropped cv.md Experience entry or
+    // an ended role shown as ongoing, which the fact gate cannot see. Lazy import
+    // so copied-alone test fixtures (no cv.md) never load it.
+    const { assertCompleteness } = await import('./verify-cv-completeness.mjs');
+    assertCompleteness(html, { cvMdPath: resolve(workspaceRoot, 'cv.md'), label: basename(inputPath) });
+    console.log('✅ Completeness check passed');
+  }
 
   return renderHtmlToPdf(html, outputPath, {
     format,
