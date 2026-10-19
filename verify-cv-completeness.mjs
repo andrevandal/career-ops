@@ -34,6 +34,7 @@
  *   import { assertCompleteness } from './verify-cv-completeness.mjs';
  *   assertCompleteness(html, { cvMdPath, label: basename(inputPath) }); // throws on failure
  */
+import { isMainModule } from "./lib/is-main-module.mjs";
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
